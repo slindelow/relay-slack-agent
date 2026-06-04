@@ -24,6 +24,7 @@ TENANT_TABLES = (
     "classification_feedback",
     "audit_log",
 )
+TEST_APP_ROLE = "relay_app_test"
 
 _RLS_EXPRESSION = "NULLIF(current_setting('app.current_workspace_id', true), '')::uuid"
 
@@ -63,8 +64,22 @@ async def engine():
         pytest.skip("PostgreSQL test database not reachable — skipping integration tests")
 
     async with eng.begin() as conn:
+        await conn.execute(
+            text(
+                f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{TEST_APP_ROLE}') THEN
+                        CREATE ROLE {TEST_APP_ROLE};
+                    END IF;
+                END
+                $$;
+                """
+            )
+        )
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {TEST_APP_ROLE}"))
         for table in TENANT_TABLES:
             await conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
             await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
@@ -74,6 +89,8 @@ async def engine():
                     f"USING (workspace_id = {_RLS_EXPRESSION})"
                 )
             )
+            await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO {TEST_APP_ROLE}"))
+        await conn.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON workspaces TO {TEST_APP_ROLE}"))
 
     yield eng
 
@@ -92,7 +109,9 @@ async def db_session(engine):
     """Async session for integration tests."""
     session = AsyncSession(bind=engine, expire_on_commit=False)
     try:
+        await session.execute(text(f"SET ROLE {TEST_APP_ROLE}"))
         yield session
     finally:
         await session.rollback()
+        await session.execute(text("RESET ROLE"))
         await session.close()
