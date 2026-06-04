@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from relay.config import get_settings
 from relay.db.models import Base
@@ -42,14 +43,17 @@ def relay_settings(monkeypatch):
     get_settings.cache_clear()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def engine():
-    """Create test engine, apply schema + RLS policies once per session, drop after."""
+    """Create test engine, apply schema + RLS policies for one test, drop after.
+
+    Function scope avoids pytest-asyncio event-loop reuse issues with asyncpg in CI.
+    """
     url = os.environ.get(
         "TEST_DATABASE_URL",
         "postgresql+asyncpg://relay:relay@localhost:5432/relay_test",
     )
-    eng = create_async_engine(url, echo=False)
+    eng = create_async_engine(url, echo=False, poolclass=NullPool)
 
     try:
         async with eng.connect() as probe:
@@ -85,13 +89,10 @@ async def engine():
 
 @pytest_asyncio.fixture
 async def db_session(engine):
-    """Async session with automatic rollback after each test."""
-    conn = await engine.connect()
-    await conn.begin()
-    session = AsyncSession(bind=conn, expire_on_commit=False, join_transaction_mode="create_savepoint")
+    """Async session for integration tests."""
+    session = AsyncSession(bind=engine, expire_on_commit=False)
     try:
         yield session
     finally:
+        await session.rollback()
         await session.close()
-        await conn.rollback()
-        await conn.close()

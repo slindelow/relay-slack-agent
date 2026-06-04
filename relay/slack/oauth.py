@@ -3,12 +3,19 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.config import get_settings
 from relay.crypto import encrypt_token
 from relay.db.models import SlaPolicy, Workspace, WorkspaceSettings, WorkspaceToken
+
+
+async def _set_workspace_context(session: AsyncSession, workspace_id: uuid.UUID) -> None:
+    await session.execute(
+        text("SET LOCAL app.current_workspace_id = :workspace_id"),
+        {"workspace_id": str(workspace_id)},
+    )
 
 
 async def upsert_workspace_from_install(
@@ -23,6 +30,7 @@ async def upsert_workspace_from_install(
         workspace = Workspace(slack_team_id=slack_team_id, slack_team_name=slack_team_name)
         session.add(workspace)
         await session.flush()
+        await _set_workspace_context(session, workspace.id)
         session.add(WorkspaceSettings(workspace_id=workspace.id))
         for tier, response_min, escalation_min in (
             ("enterprise", 30, 45),
@@ -38,6 +46,7 @@ async def upsert_workspace_from_install(
                 )
             )
     else:
+        await _set_workspace_context(session, workspace.id)
         workspace.slack_team_name = slack_team_name
         workspace.uninstalled_at = None
         workspace.installed_at = datetime.now(timezone.utc)
@@ -52,6 +61,7 @@ async def store_bot_token(
     scopes: str,
 ) -> WorkspaceToken:
     settings = get_settings()
+    await _set_workspace_context(session, workspace_id)
     existing = await session.execute(
         select(WorkspaceToken).where(
             WorkspaceToken.workspace_id == workspace_id,
@@ -73,4 +83,3 @@ async def store_bot_token(
     )
     session.add(token)
     return token
-
