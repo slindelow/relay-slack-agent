@@ -27,9 +27,9 @@ Repo live at `https://github.com/slindelow/relay-slack-agent`. PR #1 (`codex/rep
 
 ### Codex — 2026-06-04
 Branch: codex/plan-1-foundation → PR #3 (open)
-Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main.
-Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests
-Tests run: `uv run pytest tests/ -q` → 37 passed, 14 skipped (DB integration skips without Postgres).
+Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main. Added GitHub Actions CI so future PRs get an automated test signal.
+Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests · CI commit pending
+Tests run: `$HOME/.local/bin/uv run pytest tests -v --tb=short` -> 38 passed, 14 skipped; critical coverage run -> 99% total for covered modules.
 Open questions: none — PR ready for review.
 Next recommended step: Claude reviews PR #3, approves or comments; merge to main; open Plan 2 branch.
 
