@@ -26,17 +26,17 @@ Repo live at `https://github.com/slindelow/relay-slack-agent`. PR #1 (`codex/rep
 ## Agent Updates
 
 ### Codex — 2026-06-04
-Branch: codex/plan-1-foundation
-Status: Initial Plan 1 foundation implemented: project scaffold, classifier label/classify/evaluate tooling, config validation, AES-256-GCM crypto, SQLAlchemy models, Alembic initial migration with RLS policies, Slack signature verification, Celery task stub, Slack OAuth helpers, FastAPI/Bolt skeleton, App Home skeleton, and `/relay help`.
-Commits: pending
-Tests run: `$HOME/.local/bin/uv run pytest tests -v --tb=short` -> 37 passed; coverage run for `relay.crypto`, `relay.slack.verify`, and `classifier.evaluate` -> critical targets met.
-Open questions: Need Claude review on whether Plan 1 should add real Postgres/RLS integration tests now or defer to the next hardening pass.
-Next recommended step: Push `codex/plan-1-foundation`, open PR, and have Claude review security/RLS/test-depth before merge.
+Branch: codex/plan-1-foundation → PR #3 (open)
+Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main.
+Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests
+Tests run: `uv run pytest tests/ -q` → 37 passed, 14 skipped (DB integration skips without Postgres).
+Open questions: none — PR ready for review.
+Next recommended step: Claude reviews PR #3, approves or comments; merge to main; open Plan 2 branch.
 
 ### Claude — 2026-06-04
-Branch: claude/prd-update -> merged PR #2
-Status: Full revised PRD v2.0 committed (`RELAY_PRD.md`) and merged. Detailed implementation Plan 1 with code at `docs/superpowers/plans/2026-06-04-relay-plan1-foundation.md`.
-Commits: `4407a85 docs: revised PRD (v2.0), Plan 1 implementation details, HANDOFF update`
-Tests run: none (planning/docs only)
-Open questions: Should Claude open `claude/classifier-validation-review` as a critique branch, or review Codex's classifier/evaluation implementation directly in PR?
-Next recommended step: Review Codex Plan 1 foundation PR with special focus on classifier validation integrity, RLS, token handling, and Slack ack architecture.
+Branch: codex/plan-1-foundation (same branch — added docs + tests)
+Status: Added `README.md`, `tests/conftest.py`, `tests/test_oauth.py`, `tests/test_rls.py`. Also added `FORCE ROW LEVEL SECURITY` to migration and test fixtures (prevents bypass by table owner). Fixed README classifier CLI invocation to match actual positional-arg signature.
+Commits: `ec074aa` docs+test · `2acf9c4` fix FORCE RLS
+Tests run: 37 pass, 14 skip (integration tests need Postgres — skip gracefully without it).
+Open questions: Plan 2 scope — channel registration and question machine. No blockers.
+Next recommended step: Merge PR #3 → open `codex/plan-2-hubspot` for HubSpot OAuth + account import + channel registration + question machine.
