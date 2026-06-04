@@ -119,7 +119,7 @@ Integration tests are skipped automatically when PostgreSQL is not reachable.
 ### Classifier evaluation (requires Anthropic API key)
 
 ```bash
-uv run python -m classifier.evaluate --dataset tests/classifier/fixtures/sample_labeled.jsonl
+uv run python -m classifier.evaluate tests/classifier/fixtures/sample_labeled.jsonl a
 ```
 
 This runs real model calls. Do not ship classifier-dependent product flows until the validation gate passes (precision >= 0.80, recall >= 0.70) on the target dataset.

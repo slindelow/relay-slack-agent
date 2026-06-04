@@ -129,6 +129,7 @@ def upgrade() -> None:
 
     for table in TENANT_TABLES:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
         op.execute(
             f"""
             CREATE POLICY workspace_isolation ON {table}
@@ -146,6 +147,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table in reversed(TENANT_TABLES):
         op.execute(f"DROP POLICY IF EXISTS workspace_isolation ON {table}")
+        op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
     op.drop_table("workspace_tokens")
     op.drop_table("workspace_settings")
@@ -154,4 +156,3 @@ def downgrade() -> None:
     op.drop_table("classification_feedback")
     op.drop_table("audit_log")
     op.drop_table("workspaces")
-

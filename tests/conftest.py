@@ -63,6 +63,7 @@ async def engine():
         await conn.run_sync(Base.metadata.create_all)
         for table in TENANT_TABLES:
             await conn.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+            await conn.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
             await conn.execute(
                 text(
                     f"CREATE POLICY workspace_isolation ON {table} "
@@ -75,6 +76,7 @@ async def engine():
     async with eng.begin() as conn:
         for table in reversed(TENANT_TABLES):
             await conn.execute(text(f"DROP POLICY IF EXISTS workspace_isolation ON {table}"))
+            await conn.execute(text(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY"))
             await conn.execute(text(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY"))
         await conn.run_sync(Base.metadata.drop_all)
 
