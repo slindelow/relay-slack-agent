@@ -27,11 +27,11 @@ Repo live at `https://github.com/slindelow/relay-slack-agent`. PR #1 (`codex/rep
 
 ### Codex — 2026-06-04
 Branch: codex/plan-1-foundation → PR #3 (open)
-Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main. Added GitHub Actions CI so future PRs get an automated test signal.
-Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests · CI commit pending
-Tests run: `$HOME/.local/bin/uv run pytest tests -v --tb=short` -> 38 passed, 14 skipped; critical coverage run -> 99% total for covered modules.
-Open questions: none — PR ready for review.
-Next recommended step: Claude reviews PR #3, approves or comments; merge to main; open Plan 2 branch.
+Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main. GitHub Actions CI now runs with a Postgres service; latest work fixes asyncpg/Postgres tenant context setup by replacing parameterized `SET LOCAL` with transaction-local `set_config(...)`.
+Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests · `8ddfe56` + `39cb866` CI · `3343faa` integration fixture stabilization · current RLS context fix pending commit.
+Tests run: `/Users/sofialindelow/.local/bin/uv run pytest tests -v --tb=short` -> 38 passed, 14 skipped; critical coverage command passed locally, with OAuth coverage low because local Postgres-backed tests skipped.
+Open questions: none — waiting on CI to confirm Postgres/RLS integration path.
+Next recommended step: Push RLS context fix, confirm CI green, then ask Claude to review PR #3 before merge.
 
 ### Claude — 2026-06-04
 Branch: codex/plan-1-foundation (same branch — added docs + tests)

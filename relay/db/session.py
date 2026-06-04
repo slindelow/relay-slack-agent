@@ -16,7 +16,7 @@ async def get_session(workspace_id: UUID | None = None) -> AsyncGenerator[AsyncS
     async with factory() as session:
         if workspace_id is not None:
             await session.execute(
-                text("SET LOCAL app.current_workspace_id = :workspace_id"),
+                text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
                 {"workspace_id": str(workspace_id)},
             )
         try:
@@ -25,4 +25,3 @@ async def get_session(workspace_id: UUID | None = None) -> AsyncGenerator[AsyncS
         except Exception:
             await session.rollback()
             raise
-

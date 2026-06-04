@@ -27,7 +27,7 @@ async def _count(session, model, workspace_id):
 
 async def _set_workspace_context(session, workspace_id):
     await session.execute(
-        text("SET LOCAL app.current_workspace_id = :wid"),
+        text("SELECT set_config('app.current_workspace_id', :wid, true)"),
         {"wid": str(workspace_id)},
     )
 

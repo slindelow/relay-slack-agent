@@ -1030,7 +1030,7 @@ async def get_session(workspace_id: UUID | None = None) -> AsyncGenerator[AsyncS
     async with factory() as session:
         if workspace_id is not None:
             await session.execute(
-                text("SET LOCAL app.current_workspace_id = :wid"),
+                text("SELECT set_config('app.current_workspace_id', :wid, true)"),
                 {"wid": str(workspace_id)},
             )
         try:

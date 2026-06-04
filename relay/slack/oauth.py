@@ -13,7 +13,7 @@ from relay.db.models import SlaPolicy, Workspace, WorkspaceSettings, WorkspaceTo
 
 async def _set_workspace_context(session: AsyncSession, workspace_id: uuid.UUID) -> None:
     await session.execute(
-        text("SET LOCAL app.current_workspace_id = :workspace_id"),
+        text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
         {"workspace_id": str(workspace_id)},
     )
 

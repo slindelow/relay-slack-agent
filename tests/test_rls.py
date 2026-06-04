@@ -26,6 +26,7 @@ async def _create_workspace(session, team_id: str, team_name: str = "Test") -> W
     ws = Workspace(slack_team_id=team_id, slack_team_name=team_name)
     session.add(ws)
     await session.flush()
+    await _set_context(session, ws.id)
     session.add(WorkspaceSettings(workspace_id=ws.id))
     for tier, resp, esc in (("enterprise", 30, 45), ("pro", 120, 180), ("starter", 480, 600)):
         session.add(SlaPolicy(workspace_id=ws.id, tier_name=tier, response_window_minutes=resp, escalation_window_minutes=esc))
@@ -35,13 +36,13 @@ async def _create_workspace(session, team_id: str, team_name: str = "Test") -> W
 
 async def _set_context(session, workspace_id):
     await session.execute(
-        text("SET LOCAL app.current_workspace_id = :wid"),
+        text("SELECT set_config('app.current_workspace_id', :wid, true)"),
         {"wid": str(workspace_id)},
     )
 
 
 async def _clear_context(session):
-    await session.execute(text("SET LOCAL app.current_workspace_id = ''"))
+    await session.execute(text("SELECT set_config('app.current_workspace_id', '', true)"))
 
 
 # ---------------------------------------------------------------------------
