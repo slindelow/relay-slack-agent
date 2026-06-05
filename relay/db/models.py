@@ -43,6 +43,13 @@ class ConnectorType(str, enum.Enum):
     notion = "notion"
 
 
+class DraftStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    discarded = "discarded"
+    sent = "sent"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -228,6 +235,7 @@ class CustomerAccount(Base):
     health_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     external_crm_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     manual_tier_override: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    account_context: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -357,6 +365,7 @@ class Question(Base):
     message: Mapped[Message] = relationship(back_populates="questions", overlaps="channel,questions,workspace")
     account: Mapped[CustomerAccount] = relationship(overlaps="channel,message,questions,workspace")
     events: Mapped[list["QuestionEvent"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+    drafts: Mapped[list["Draft"]] = relationship(back_populates="question", cascade="all, delete-orphan")
 
 
 class QuestionEvent(Base):
@@ -601,6 +610,58 @@ class KnowledgeChunk(Base):
     source_document: Mapped[SourceDocument | None] = relationship(back_populates="chunks", overlaps="workspace")
 
 
+class Draft(Base):
+    """Human-approved response draft generated from retrieved evidence."""
+
+    __tablename__ = "drafts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    evidence_bundle: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    customer_draft: Mapped[str | None] = mapped_column(Text, nullable=True)
+    internal_brief: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default=DraftStatus.pending.value)
+    editor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    approved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="CASCADE",
+            name="fk_draft_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "editor_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_draft_editor_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "approved_by_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_draft_approver_same_workspace",
+        ),
+        CheckConstraint(
+            "status IN ('pending','approved','discarded','sent')",
+            name="ck_drafts_status",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_draft_workspace_id"),
+        Index("idx_drafts_workspace_question", "workspace_id", "question_id"),
+        Index("idx_drafts_workspace_status", "workspace_id", "status"),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="drafts")
+    question: Mapped[Question] = relationship(back_populates="drafts", overlaps="workspace")
+    editor: Mapped["User | None"] = relationship(foreign_keys=[editor_user_id])
+    approved_by: Mapped["User | None"] = relationship(foreign_keys=[approved_by_user_id])
+    retrieval_logs: Mapped[list["RetrievalLog"]] = relationship(back_populates="draft", overlaps="workspace")
+
+
 class RetrievalLog(Base):
     """Audit trail for semantic retrieval calls."""
 
@@ -614,8 +675,112 @@ class RetrievalLog(Base):
     retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "draft_id"],
+            ["drafts.workspace_id", "drafts.id"],
+            name="fk_retrieval_log_draft_same_workspace",
+        ),
         UniqueConstraint("workspace_id", "id", name="uq_retrieval_log_workspace_id"),
         Index("idx_retrieval_logs_workspace_retrieved", "workspace_id", "retrieved_at"),
     )
 
+    workspace: Mapped[Workspace] = relationship(overlaps="draft,retrieval_logs")
+    draft: Mapped["Draft | None"] = relationship(back_populates="retrieval_logs", overlaps="workspace")
+
+
+# ---------------------------------------------------------------------------
+# Plan 5 models — feedback signals and impact metrics
+# ---------------------------------------------------------------------------
+
+
+class FeedbackSignal(Base):
+    """CSM correction or draft feedback signal."""
+
+    __tablename__ = "feedback_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    correction_action: Mapped[str] = mapped_column(String(64), nullable=False)
+    original_label: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    corrected_label: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    original_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "message_id"],
+            ["messages.workspace_id", "messages.id"],
+            name="fk_feedback_message_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            name="fk_feedback_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "draft_id"],
+            ["drafts.workspace_id", "drafts.id"],
+            name="fk_feedback_draft_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "actor_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_feedback_actor_same_workspace",
+        ),
+        CheckConstraint(
+            "correction_action IN ('mark_not_question','mark_question','discard_draft','regenerate_draft','incorrect_source','incorrect_response')",
+            name="ck_feedback_signals_action",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_feedback_signal_workspace_id"),
+        Index("idx_feedback_signals_workspace_question", "workspace_id", "question_id"),
+    )
+
     workspace: Mapped[Workspace] = relationship()
+
+
+class ImpactMetric(Base):
+    """Outcome metrics recorded when a draft is sent or discarded."""
+
+    __tablename__ = "impact_metrics"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    time_to_first_alert_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    time_to_first_draft_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    time_to_send_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sla_met: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    draft_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    draft_edit_distance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    alert_to_action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "account_id"],
+            ["customer_accounts.workspace_id", "customer_accounts.id"],
+            name="fk_impact_metric_account_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="CASCADE",
+            name="fk_impact_metric_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "draft_id"],
+            ["drafts.workspace_id", "drafts.id"],
+            name="fk_impact_metric_draft_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_impact_metric_workspace_id"),
+        Index("idx_impact_metrics_workspace_question", "workspace_id", "question_id"),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="impact_metrics")

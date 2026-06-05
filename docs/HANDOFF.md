@@ -148,3 +148,21 @@ Next recommended step:
 Branch: `codex/plan-2-schema-pr4`, `codex/plan-2-hubspot`, `codex/plan-2-channel-registration`, `codex/handoff-2026-06-05`
 Status: Plan 2 slices merged (PRs #4, #6, #7, #8). CI green on all.
 Next: Review PRs #9, #10, #11 and merge in order. Start Plan 4 source connectors if Claude hasn't.
+
+### Codex — 2026-06-05 (Plan 4 foundation pass)
+Branch: `claude/plan-4-connectors-clean`
+Status: Plan 4 connector runtime reviewed and hardened, then Plan 5 draft foundation started. Connector sync now targets a specific `connector_id` end to end instead of re-querying by provider type; the worker owns visible `syncing` / `synced` / `error` transitions around provider work; chunking rejects invalid overlap settings that could hang; retrieval rejects empty queries and invalid `top_k` values before embedding. Added draft storage (`0005_plan5_drafts.py`, `Draft`, `DraftStatus`) and a narrow `relay.drafts.generator` service that stores pending drafts, ties retrieval logs to draft ids, blocks customer-facing drafts when no verified evidence is retrieved, and parses mocked Anthropic draft JSON.
+
+Working standard updated in `docs/CLAUDE_OPERATING_BRIEF.md`: future review/problem work should inspect the current full state before advancing, keep code/context surface minimal, prefer structural root-cause repairs over bandaids, verify generated output, and split work only when scopes are independent.
+
+Tests run:
+- `.venv/bin/python -m pytest tests/test_draft_generator.py tests/test_retrieval.py tests/test_models.py -q` — 29 passed
+- `.venv/bin/python -m pytest tests/test_connector_tasks.py tests/test_github_connector.py tests/test_google_drive_connector.py tests/test_chunking.py tests/test_retrieval.py tests/test_models.py -q` — 45 passed
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic heads` — `0005_plan5_drafts (head)`
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — rendered 608 lines including draft table, draft RLS, and retrieval-log-to-draft FK
+- `.venv/bin/python -m pytest -q` — 154 passed, 19 skipped, 1 warning
+- `.venv/bin/python -m compileall relay alembic` — passed
+
+Open notes:
+- Slack task tools were not exposed by the current tool surface after discovery; available organization tooling here is Codex thread automation and explicitly authorized sub-agents.
+- Next product step is Slack human approval: surface pending drafts with evidence citations, support edit/approve/discard actions, and bot-post approved responses with attribution.

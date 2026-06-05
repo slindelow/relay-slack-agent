@@ -37,6 +37,13 @@ def chunk_text(
     Empty or whitespace-only input returns [].
     The last chunk may be shorter than max_tokens.
     """
+    if max_tokens <= 0:
+        raise ValueError("max_tokens must be greater than 0")
+    if overlap_tokens < 0:
+        raise ValueError("overlap_tokens must be greater than or equal to 0")
+    if overlap_tokens >= max_tokens:
+        raise ValueError("overlap_tokens must be less than max_tokens")
+
     if not text or not text.strip():
         return []
 

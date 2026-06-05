@@ -78,7 +78,7 @@ async def test_sync_creates_source_documents_and_chunks():
     ):
         mock_settings.return_value.token_encryption_key_bytes = key
         mock_settings.return_value.google_drive_credentials_json = ""
-        await GoogleDriveConnector().sync(workspace_id)
+        await GoogleDriveConnector().sync(workspace_id, connector_id)
 
     session.add.assert_called_once()
     session.flush.assert_called()
@@ -120,7 +120,7 @@ async def test_sync_skips_unchanged_hash():
     ):
         mock_settings.return_value.token_encryption_key_bytes = key
         mock_settings.return_value.google_drive_credentials_json = ""
-        await GoogleDriveConnector().sync(workspace_id)
+        await GoogleDriveConnector().sync(workspace_id, connector_id)
 
     mock_embed.assert_not_called()
 
