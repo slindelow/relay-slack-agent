@@ -1,8 +1,17 @@
 """HubSpot OAuth flow and account sync."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from urllib.parse import urlencode
+from uuid import UUID
 
 import httpx
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from relay.db.models import CrmConnection
 
 HUBSPOT_AUTH_BASE = "https://app.hubspot.com/oauth/authorize"
 HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token"
@@ -120,3 +129,63 @@ async def fetch_hubspot_companies(
             f"Companies fetch failed: {response.status_code} {response.text}"
         )
     return response.json().get("results", [])
+
+
+async def store_hubspot_connection(
+    session: AsyncSession,
+    workspace_id: UUID,
+    token_response: dict,
+) -> CrmConnection:
+    """Encrypt and upsert the workspace's HubSpot OAuth connection."""
+    from sqlalchemy import select, text
+
+    from relay.config import get_settings
+    from relay.crypto import encrypt_token
+    from relay.db.models import CrmConnection as _CrmConnection
+
+    access_token = token_response["access_token"]
+    refresh_token = token_response.get("refresh_token")
+    scopes = token_response.get("scope", HUBSPOT_SCOPES)
+    key = get_settings().token_encryption_key_bytes
+
+    await session.execute(
+        text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
+        {"workspace_id": str(workspace_id)},
+    )
+
+    result = await session.execute(
+        select(_CrmConnection).where(
+            _CrmConnection.workspace_id == workspace_id,
+            _CrmConnection.crm_provider == "hubspot",
+        )
+    )
+    connection = result.scalar_one_or_none()
+
+    encrypted_access_token, access_nonce = encrypt_token(access_token, key)
+    encrypted_refresh_token = None
+    refresh_nonce = None
+    if refresh_token:
+        encrypted_refresh_token, refresh_nonce = encrypt_token(refresh_token, key)
+
+    if connection is None:
+        connection = _CrmConnection(
+            workspace_id=workspace_id,
+            crm_provider="hubspot",
+            encrypted_access_token=encrypted_access_token,
+            encrypted_access_token_nonce=access_nonce,
+            encrypted_refresh_token=encrypted_refresh_token,
+            encrypted_refresh_token_nonce=refresh_nonce,
+            scopes=scopes,
+            sync_status="not_synced",
+        )
+        session.add(connection)
+    else:
+        connection.encrypted_access_token = encrypted_access_token
+        connection.encrypted_access_token_nonce = access_nonce
+        connection.encrypted_refresh_token = encrypted_refresh_token
+        connection.encrypted_refresh_token_nonce = refresh_nonce
+        connection.scopes = scopes
+        connection.sync_status = "not_synced"
+        connection.disconnected_at = None
+
+    return connection
