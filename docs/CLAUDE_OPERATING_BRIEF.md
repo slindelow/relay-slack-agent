@@ -106,3 +106,27 @@ Next recommended step:
 - No secrets committed.
 - `docs/HANDOFF.md` updated.
 - PR description includes changes, tests, risks, and next steps.
+
+## Engineering Review Standards
+
+Before opening a PR or starting new work, review the current branch for:
+
+### Priority order
+1. **Critical correctness**: session lifecycle bugs (detached ORM objects), race conditions (missing SELECT FOR UPDATE on state transitions), missing commits on mutation paths.
+2. **Security**: unchecked classifier label vs. confidence, token handling, tenant boundary leaks.
+3. **Dead code**: unused imports, unreachable computed values, shadow assignments.
+4. **Warnings as signal**: SAWarnings from SQLAlchemy are architectural feedback — trace to root cause, fix with `overlaps=` annotations or `viewonly=True`, not silence with comments alone.
+5. **Test coverage**: every public function with a state-dependent path needs a test for each valid and invalid transition.
+
+### Fix approach (non-negotiable)
+**No bandaid fixes.** When a bug is found:
+1. Identify the structural root cause (e.g. detached object = wrong session scope).
+2. Rebuild from first principles (e.g. load entity inside the session that will commit it).
+3. The fix must eliminate the cause, not paper over the symptom.
+
+Example: the SLA poller had a bug where Question attribute updates never persisted. The root cause was loading questions in a cross-tenant session that closed before per-tenant work began. The fix was to split into Phase 1 (scan: fetch IDs only) and Phase 2 (mutate: load Question inside workspace session so changes commit with it). Not: `session.merge(question)` as a patch.
+
+### SQLAlchemy composite FK pattern
+RELAY uses `(workspace_id, entity_id)` composite FKs for RLS enforcement. This causes SQLAlchemy to warn about `workspace_id` being writable via multiple relationship paths. Resolution:
+- Add `overlaps="..."` annotations as directed by the warning message.
+- All workspace_id values are set explicitly in constructors — we never rely on ORM cascade to propagate workspace_id through relationships.
