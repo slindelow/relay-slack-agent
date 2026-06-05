@@ -39,28 +39,43 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
-### Claude — 2026-06-05 (session 2)
-Branch: `claude/plan-3-sla` → **PR #11 (OPEN)**
-Status: Plan 3 SLA engine complete. 100 unit tests pass, 2 DB integration tests skip without local Postgres.
+### Claude — 2026-06-05 (session 3, code review)
+Branch: `claude/plan-3-sla` → **PR #11 (OPEN, updated)**
+Status: Full structural code review completed on Plans 2 + 3. 34 tests pass, 0 warnings.
 
-**PR #11 contains:**
-- `relay/db/models.py`: Alert, Assignment, Snooze models + AlertType enum
-- `alembic/versions/0003_plan3_sla.py`: creates alerts/assignments/snoozes tables, RLS + FORCE RLS on all three
-- `relay/sla/alerts.py`: build_alert_blocks() — Block Kit DM card with account/tier/waiting/SLA/4 action buttons
-- `relay/sla/poller.py`: relay.poll_sla Celery Beat task (60s). Cross-tenant scan, snooze check, 5-min dedup, OOO skip, SLA policy lookup, bot token decrypt, DM send, Alert record, next_alert_at advance
-- `relay/worker/celery_app.py`: beat_schedule wired for poll_sla
-- `relay/slack/actions.py`: @app.action handlers for relay_claim_question, relay_snooze_1h, relay_snooze_4h, relay_mark_not_question
-- `relay/slack/app.py`: imports actions module for registration
-- `tests/test_sla_alerts.py`: 15 tests (alert card structure, action ids, escalation note, SLA states)
-- `tests/test_slack_actions.py`: 9 tests (ack behaviour, UUID guard, question-not-found, snooze/claim/resolve)
+**Bugs fixed in this session:**
 
-Tests run: 100 passed, 2 skipped (DB integration without Postgres).
+1. **Critical — poller detached-object bug** (`relay/sla/poller.py`):
+   The cross-tenant scan closed its session before `_alert_question` ran.
+   Question was detached — `next_alert_at`, `alert_count`, `last_alert_at` mutations
+   never persisted. Fixed by splitting into Phase 1 (SELECT id+workspace_id only,
+   no session state needed) + Phase 2 (load Question inside the workspace-scoped
+   session so all mutations commit atomically).
 
-Open questions / TODOs:
-- SAWarnings about SQLAlchemy relationship `overlaps` — cosmetic, pre-existing since PR #4
-- Redis dedup on ingestion (idempotency key check before classify) — TODO stub in tasks.py
+2. **Race condition — double-claim** (`relay/question/machine.py`):
+   `_load_question` used a plain SELECT. Two concurrent Bolt handlers could both
+   read state="open" and both claim. Fixed with `.with_for_update()`.
+
+3. **Dead code** (`relay/sla/alerts.py`):
+   `deadline_secs` on line 51 computed via complex ternary then immediately
+   discarded (line 53 recomputed it). Simplified to clean two-branch conditional.
+
+4. **Missing label check** (`relay/worker/tasks.py` on `claude/plan-2-event-ingestion`):
+   Classifier confidence was checked without verifying `is_question`. A
+   high-confidence "not a question" would create a spurious Question row. Fixed
+   by gating all Question creation under `if result_cls.is_question`.
+
+5. **SAWarnings eliminated** (`relay/db/models.py`):
+   All 15 pre-existing SAWarning overlaps on composite-FK relationships silenced
+   with `overlaps=` annotations throughout the model graph.
+
+Tests run: 34 passed, 0 warnings (unit tests; DB integration tests skipped).
+
+Open TODOs (non-blocking):
+- Redis dedup on ingestion (idempotency key check before classify)
 - HubSpot company upsert — still stubbed in hubspot_tasks.py
-- CustomerAccount.name field guard in poller — defensive hasattr check
+- `Question.snoozed_until` field is dead schema — set nowhere, read by nothing
+  (Snooze table is authoritative); remove in a future migration
 
 Next recommended step:
 1. Codex: review and merge PRs #9, #10, #11 in order
