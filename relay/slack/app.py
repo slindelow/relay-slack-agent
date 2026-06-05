@@ -16,4 +16,5 @@ from relay.commands import register as _register  # noqa: E402,F401
 from relay.slack import home as _home  # noqa: E402,F401
 from relay.slack import events as _events  # noqa: E402,F401
 from relay.slack import actions as _actions  # noqa: E402,F401
+from relay.slack import draft_actions as _draft_actions  # noqa: E402,F401
 

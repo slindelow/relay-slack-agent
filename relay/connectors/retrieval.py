@@ -32,12 +32,18 @@ async def retrieve(
     query: str,
     session: AsyncSession,
     top_k: int = 5,
+    draft_id: uuid.UUID | None = None,
 ) -> list[RetrievedChunk]:
     """Return the top-k most relevant KnowledgeChunks for query, scoped to workspace_id.
 
     Always writes a retrieval_log row. Workspace isolation is enforced both by
     the WHERE clause and by RLS (app.current_workspace_id must be set before call).
     """
+    if top_k <= 0:
+        raise ValueError("top_k must be greater than 0")
+    if not query.strip():
+        raise ValueError("query must not be empty")
+
     # Embed the query
     query_vectors = await _get_embeddings([query])
     query_vec = query_vectors[0]
@@ -82,7 +88,7 @@ async def retrieve(
     # Write retrieval log
     log = RetrievalLog(
         workspace_id=workspace_id,
-        draft_id=None,
+        draft_id=draft_id,
         sources_used=[{"chunk_id": cid} for cid in source_ids],
         query=query,
     )

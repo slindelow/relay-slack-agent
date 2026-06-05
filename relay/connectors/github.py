@@ -141,7 +141,7 @@ def _github_items(repo, repo_name: str, markdown_paths: Iterable[str]) -> list[_
 class GitHubConnector(Connector):
     """Sync selected GitHub repo data into RELAY knowledge chunks."""
 
-    async def sync(self, workspace_id: uuid.UUID) -> None:
+    async def sync(self, workspace_id: uuid.UUID, connector_id: uuid.UUID) -> None:
         if Github is None:
             raise RuntimeError("PyGitHub is required for GitHub sync")
 
@@ -150,6 +150,7 @@ class GitHubConnector(Connector):
             result = await session.execute(
                 select(SourceConnector).where(
                     SourceConnector.workspace_id == workspace_id,
+                    SourceConnector.id == connector_id,
                     SourceConnector.connector_type == "github",
                     SourceConnector.disconnected_at.is_(None),
                 )
@@ -176,9 +177,6 @@ class GitHubConnector(Connector):
                 repo = client.get_repo(repo_name)
                 for item in _github_items(repo, repo_name, markdown_paths):
                     await self._sync_item(session, workspace_id, connector.id, item)
-
-            connector.last_synced_at = datetime.now(UTC)
-            connector.sync_status = "synced"
 
     async def _sync_item(
         self,

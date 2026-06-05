@@ -72,7 +72,31 @@ def _connector_blocks(connector_rows: list[Any]) -> list[dict]:
     return blocks
 
 
-def build_home(connector_rows: list[Any]) -> list[dict]:
+def _draft_queue_blocks(questions_needing_draft: list[Any]) -> list[dict]:
+    """Build blocks for claimed questions that have no pending/approved draft."""
+    if not questions_needing_draft:
+        return []
+
+    blocks: list[dict] = [
+        {"type": "divider"},
+        {"type": "header", "text": {"type": "plain_text", "text": "Questions Needing Drafts"}},
+    ]
+    for q in questions_needing_draft:
+        body_excerpt = (q.body or "")[:120]
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f":speech_balloon: _{body_excerpt}…_"},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Generate draft"},
+                "action_id": "relay_generate_draft",
+                "value": str(q.id),
+            },
+        })
+    return blocks
+
+
+def build_home(connector_rows: list[Any], questions_needing_draft: list[Any] | None = None) -> list[dict]:
     """Return the full App Home block list given a list of SourceConnector rows."""
     base_blocks: list[dict] = [
         {"type": "header", "text": {"type": "plain_text", "text": "RELAY"}},
@@ -98,7 +122,7 @@ def build_home(connector_rows: list[Any]) -> list[dict]:
         },
         {"type": "divider"},
     ]
-    return base_blocks + _connector_blocks(connector_rows)
+    return base_blocks + _connector_blocks(connector_rows) + _draft_queue_blocks(questions_needing_draft or [])
 
 
 @app.event("app_home_opened")
@@ -106,11 +130,12 @@ async def publish_app_home(event, client, body):
     team_id: str = body.get("team_id", "")
 
     connector_rows: list[Any] = []
+    questions_needing_draft: list[Any] = []
     if team_id:
         try:
             from sqlalchemy import select
 
-            from relay.db.models import SourceConnector, Workspace
+            from relay.db.models import Draft, Question, QuestionState, SourceConnector, Workspace
             from relay.db.session import get_session
 
             async with get_session() as unscoped:
@@ -128,10 +153,24 @@ async def publish_app_home(event, client, body):
                         )
                     )
                     connector_rows = list(conn_result.scalars())
-        except Exception:
-            pass  # Degrade gracefully — Home still renders without connector data
 
-    blocks = build_home(connector_rows)
+                    # Claimed questions with no pending/approved draft
+                    active_draft_q_ids = select(Draft.question_id).where(
+                        Draft.workspace_id == workspace.id,
+                        Draft.status.in_(["pending", "approved"]),
+                    )
+                    q_result = await session.execute(
+                        select(Question).where(
+                            Question.workspace_id == workspace.id,
+                            Question.state == QuestionState.claimed.value,
+                            Question.id.notin_(active_draft_q_ids),
+                        ).limit(10)
+                    )
+                    questions_needing_draft = list(q_result.scalars())
+        except Exception:
+            pass  # Degrade gracefully — Home still renders without data
+
+    blocks = build_home(connector_rows, questions_needing_draft)
     await client.views_publish(
         user_id=event["user"],
         view={"type": "home", "blocks": blocks},

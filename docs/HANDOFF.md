@@ -39,6 +39,43 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Claude — 2026-06-05 (Plans 4 + 5 — connectors, drafting, approval)
+Branch (Plan 4): `claude/plan-4-connectors-v2` → **merged to main as PR #12**
+Branch (Plan 5): `claude/plan-5-clean` → PR #13 open, CI pending
+Status: Plans 1–4 in main. 184 tests pass, 0 failures.
+
+**Plan 4 session work:**
+- Fixed PR #11 (SLA) CI: conftest env defaults + TENANT_TABLES cleanup; rebased onto merged #9/#10; merged.
+- Created `claude/plan-4-connectors-v2` from clean main; cherry-picked Plan 4 commit (37 files, 9 US); updated `uv.lock` for new deps; fixed CI to use `pgvector/pgvector:pg15` + `CREATE EXTENSION IF NOT EXISTS vector` in fixture.
+- PR #12 merged: source connectors, embedding pipeline, semantic retrieval.
+
+**Plan 5 built (PR #13 — `claude/plan-5-clean`):**
+
+**US-001** — Migration `0005_plan5_drafts.py`: `drafts`, `feedback_signals`, `impact_metrics` tables + `account_context` JSONB on `customer_accounts`. FK from `retrieval_logs.draft_id` → `drafts.id`. ORM models `Draft`, `DraftStatus`, `FeedbackSignal`, `ImpactMetric` in `relay/db/models.py`.
+
+**US-002** — `relay/drafting/evidence.py`: `assemble_evidence()`. Joins Question + Message, retrieves chunks, deduplicates by provider+url, reranks by authority tier + freshness, 8k-token budget enforcement.
+
+**US-003** — `relay/drafting/generator.py`: `generate_draft()`. Claude Sonnet `submit_draft` tool_use; all retrieved content in `<retrieved_source trust="external">` XML delimiters; retries once on schema mismatch; `requires_human_review` always True; saves Draft row.
+
+**US-004** — `relay/worker/drafting_tasks.py`: `generate_draft_for_question` Celery task. Checks `claimed` state, assembles evidence, generates draft, DMs CSM on success/failure.
+
+**US-005** — `relay/slack/draft_modal.py`: pure `build_draft_modal()`. Question excerpt, CRM context (tier/ARR/renewal), internal brief, confidence badge (high/medium/low), editable plain_text_input (max 3000 chars), source citations with stale warnings, Regenerate + Discard action buttons.
+
+**US-006** — `relay_send_draft` view_submission handler: posts to customer channel with CSM attribution, resolves question, writes QuestionEvent + ImpactMetric.
+
+**US-007** — `relay_discard_draft` + `relay_regenerate_draft` action handlers: log FeedbackSignal (discard_draft/regenerate_draft), update draft status, enqueue regen task.
+
+**US-008** — `relay_generate_draft` App Home button + `build_home()` extended with `questions_needing_draft` section. `relay.worker.drafting_tasks` in Celery include list.
+
+**prd.json** advanced to Plan 6 (8 stories: knowledge_entries, index_approved_response, relay_memory retrieval citation, /relay ask, App Home impact/accuracy sections, admin JSONL export, /relay pulse).
+
+Tests: 184 passed, 0 failures, 19 skipped.
+
+Next for next agent:
+1. Wait for PR #13 CI (should pass — pgvector fix is in main now)
+2. Merge PR #13
+3. Create `claude/plan-6-feedback-memory` from new main; implement 8 Plan 6 stories from `prd.json`
+
 ### Claude — 2026-06-05 (Plan 4 — source connectors + embedding pipeline)
 Branch: `claude/plan-3-sla` (Plan 4 code stacked on Plan 3 pending merge)
 Status: All 9 Plan 4 user stories complete. 137 tests pass, 0 failures, 0 warnings.
@@ -148,3 +185,21 @@ Next recommended step:
 Branch: `codex/plan-2-schema-pr4`, `codex/plan-2-hubspot`, `codex/plan-2-channel-registration`, `codex/handoff-2026-06-05`
 Status: Plan 2 slices merged (PRs #4, #6, #7, #8). CI green on all.
 Next: Review PRs #9, #10, #11 and merge in order. Start Plan 4 source connectors if Claude hasn't.
+
+### Codex — 2026-06-05 (Plan 4 foundation pass)
+Branch: `claude/plan-4-connectors-clean`
+Status: Plan 4 connector runtime reviewed and hardened, then Plan 5 draft foundation started. Connector sync now targets a specific `connector_id` end to end instead of re-querying by provider type; the worker owns visible `syncing` / `synced` / `error` transitions around provider work; chunking rejects invalid overlap settings that could hang; retrieval rejects empty queries and invalid `top_k` values before embedding. Added draft storage (`0005_plan5_drafts.py`, `Draft`, `DraftStatus`) and a narrow `relay.drafts.generator` service that stores pending drafts, ties retrieval logs to draft ids, blocks customer-facing drafts when no verified evidence is retrieved, and parses mocked Anthropic draft JSON.
+
+Working standard updated in `docs/CLAUDE_OPERATING_BRIEF.md`: future review/problem work should inspect the current full state before advancing, keep code/context surface minimal, prefer structural root-cause repairs over bandaids, verify generated output, and split work only when scopes are independent.
+
+Tests run:
+- `.venv/bin/python -m pytest tests/test_draft_generator.py tests/test_retrieval.py tests/test_models.py -q` — 29 passed
+- `.venv/bin/python -m pytest tests/test_connector_tasks.py tests/test_github_connector.py tests/test_google_drive_connector.py tests/test_chunking.py tests/test_retrieval.py tests/test_models.py -q` — 45 passed
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic heads` — `0005_plan5_drafts (head)`
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — rendered 608 lines including draft table, draft RLS, and retrieval-log-to-draft FK
+- `.venv/bin/python -m pytest -q` — 154 passed, 19 skipped, 1 warning
+- `.venv/bin/python -m compileall relay alembic` — passed
+
+Open notes:
+- Slack task tools were not exposed by the current tool surface after discovery; available organization tooling here is Codex thread automation and explicitly authorized sub-agents.
+- Next product step is Slack human approval: surface pending drafts with evidence citations, support edit/approve/discard actions, and bot-post approved responses with attribution.

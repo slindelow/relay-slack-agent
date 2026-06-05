@@ -3,6 +3,10 @@ from relay.db.models import (
     ClassificationFeedback,
     CrmConnection,
     CustomerAccount,
+    Draft,
+    DraftStatus,
+    FeedbackSignal,
+    ImpactMetric,
     KnowledgeChunk,
     Message,
     MonitoredChannel,
@@ -42,7 +46,10 @@ def test_all_tenant_tables_have_workspace_id():
         SourceConnector,
         SourceDocument,
         KnowledgeChunk,
+        Draft,
         RetrievalLog,
+        FeedbackSignal,
+        ImpactMetric,
         ClassificationFeedback,
         AuditLog,
     ):
@@ -107,6 +114,7 @@ def test_customer_account_has_crm_and_ownership_fields():
         "renewal_date",
         "health_score",
         "manual_tier_override",
+        "account_context",
         "deleted_at",
     }
     assert required.issubset(cols)
@@ -250,7 +258,7 @@ def test_plan4_models_have_tenant_scoped_constraints():
             "uq_knowledge_chunk_content_hash",
             "ck_knowledge_chunks_embedding_dims",
         },
-        RetrievalLog: {"uq_retrieval_log_workspace_id"},
+        RetrievalLog: {"fk_retrieval_log_draft_same_workspace", "uq_retrieval_log_workspace_id"},
     }
     for model, names in expected.items():
         constraint_names = {constraint.name for constraint in model.__table__.constraints}
@@ -260,3 +268,78 @@ def test_plan4_models_have_tenant_scoped_constraints():
 def test_knowledge_chunk_uses_pgvector_1536_embedding():
     embedding_type = KnowledgeChunk.__table__.columns["embedding"].type
     assert getattr(embedding_type, "dim", None) == 1536
+
+
+def test_plan5_draft_model_has_approval_lifecycle_fields():
+    cols = {column.key for column in Draft.__table__.columns}
+    required = {
+        "question_id",
+        "evidence_bundle",
+        "customer_draft",
+        "internal_brief",
+        "confidence",
+        "status",
+        "editor_user_id",
+        "approved_by_user_id",
+        "sent_at",
+    }
+    assert required.issubset(cols)
+    assert {status.value for status in DraftStatus} == {"pending", "approved", "discarded", "sent"}
+
+
+def test_plan5_draft_model_has_tenant_scoped_constraints():
+    constraint_names = {constraint.name for constraint in Draft.__table__.constraints}
+    assert {
+        "fk_draft_question_same_workspace",
+        "fk_draft_editor_same_workspace",
+        "fk_draft_approver_same_workspace",
+        "uq_draft_workspace_id",
+        "ck_drafts_status",
+    }.issubset(constraint_names)
+
+
+def test_plan5_feedback_signal_has_prd_feedback_fields():
+    cols = {column.key for column in FeedbackSignal.__table__.columns}
+    assert {
+        "message_id",
+        "question_id",
+        "draft_id",
+        "actor_user_id",
+        "correction_action",
+        "original_label",
+        "corrected_label",
+        "original_confidence",
+        "notes",
+    }.issubset(cols)
+    constraint_names = {constraint.name for constraint in FeedbackSignal.__table__.constraints}
+    assert {
+        "fk_feedback_message_same_workspace",
+        "fk_feedback_question_same_workspace",
+        "fk_feedback_draft_same_workspace",
+        "fk_feedback_actor_same_workspace",
+        "uq_feedback_signal_workspace_id",
+        "ck_feedback_signals_action",
+    }.issubset(constraint_names)
+
+
+def test_plan5_impact_metric_has_prd_metric_fields():
+    cols = {column.key for column in ImpactMetric.__table__.columns}
+    assert {
+        "account_id",
+        "question_id",
+        "draft_id",
+        "time_to_first_alert_seconds",
+        "time_to_first_draft_seconds",
+        "time_to_send_seconds",
+        "sla_met",
+        "draft_accepted",
+        "draft_edit_distance",
+        "alert_to_action",
+    }.issubset(cols)
+    constraint_names = {constraint.name for constraint in ImpactMetric.__table__.constraints}
+    assert {
+        "fk_impact_metric_account_same_workspace",
+        "fk_impact_metric_question_same_workspace",
+        "fk_impact_metric_draft_same_workspace",
+        "uq_impact_metric_workspace_id",
+    }.issubset(constraint_names)

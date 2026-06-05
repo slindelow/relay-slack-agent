@@ -116,6 +116,8 @@ Before opening a PR, starting new work, or responding to a review/problem reques
 - Optimize for operational efficiency: Slack handlers ack first, slow or external work goes to workers, Celery payloads stay JSON-serializable, and DB sessions stay scoped to the mutation they commit.
 - Keep context lean. Use docs and tests as durable memory; avoid scattering scratch notes or repeating long rationale in code.
 - Treat tests as architecture. A passing suite is not enough if new tenant tables, state transitions, or async boundaries are not represented in the harness.
+- Treat generated output as part of the product. Render migrations, docs, dashboards, or UI artifacts when possible and repair the producing structure when output is wrong or bloated.
+- Split work across tools or agents only when scopes are independent, ownership is clear, and integration cost is lower than local execution.
 
 ### Priority order
 1. **Critical correctness**: session lifecycle bugs (detached ORM objects), race conditions (missing SELECT FOR UPDATE on state transitions), missing commits on mutation paths.

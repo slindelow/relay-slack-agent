@@ -43,7 +43,7 @@ def _build_drive_service(credentials_json: str):
 class GoogleDriveConnector(Connector):
     """Syncs a Google Drive folder into RELAY knowledge_chunks."""
 
-    async def sync(self, workspace_id: uuid.UUID) -> None:
+    async def sync(self, workspace_id: uuid.UUID, connector_id: uuid.UUID) -> None:
         from relay.config import get_settings
 
         settings = get_settings()
@@ -53,6 +53,7 @@ class GoogleDriveConnector(Connector):
             result = await session.execute(
                 select(SourceConnector).where(
                     SourceConnector.workspace_id == workspace_id,
+                    SourceConnector.id == connector_id,
                     SourceConnector.connector_type == "google_drive",
                     SourceConnector.disconnected_at.is_(None),
                 )
@@ -82,9 +83,6 @@ class GoogleDriveConnector(Connector):
                 .execute()
             )
             files = response.get("files", [])
-
-            connector_id = connector_row.id
-
             for file in files:
                 file_id: str = file["id"]
                 title: str = file["name"]
@@ -151,9 +149,6 @@ class GoogleDriveConnector(Connector):
                     source_document_id=doc.id,
                     session=session,
                 )
-
-            connector_row.last_synced_at = datetime.now(UTC)
-            connector_row.sync_status = "synced"
 
     async def search(self, workspace_id: uuid.UUID, query: str, top_k: int) -> list:
         raise NotImplementedError("Use retrieve() for search")

@@ -1,5 +1,7 @@
 """Unit tests for the text chunking utility."""
 
+import pytest
+
 from relay.connectors.chunking import _get_encoding, chunk_text
 
 _enc = _get_encoding()
@@ -52,3 +54,12 @@ def test_exact_max_tokens_boundary():
     result = chunk_text(text, max_tokens=100, overlap_tokens=10)
     assert len(result) == 1
     assert _token_len(result[0]) <= 100
+
+
+@pytest.mark.parametrize(
+    ("max_tokens", "overlap_tokens"),
+    [(0, 0), (10, -1), (10, 10), (10, 11)],
+)
+def test_invalid_chunk_parameters_raise(max_tokens, overlap_tokens):
+    with pytest.raises(ValueError):
+        chunk_text("hello world", max_tokens=max_tokens, overlap_tokens=overlap_tokens)
