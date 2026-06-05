@@ -82,10 +82,11 @@ def test_hubspot_oauth_state_round_trips_workspace_id():
 def test_hubspot_oauth_state_rejects_tampering():
     workspace_id = uuid.uuid4()
     state = build_hubspot_state(workspace_id, bytes.fromhex("a" * 64))
-    tampered = state[:-1] + ("A" if state[-1] != "A" else "B")
+    payload, signature = state.split(".", 1)
+    tampered_payload = payload[:-1] + ("A" if payload[-1] != "A" else "B")
 
     with pytest.raises(HubSpotOAuthError):
-        parse_hubspot_state(tampered, bytes.fromhex("a" * 64))
+        parse_hubspot_state(f"{tampered_payload}.{signature}", bytes.fromhex("a" * 64))
 
 
 # ---------------------------------------------------------------------------
