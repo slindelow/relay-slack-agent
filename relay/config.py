@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     app_base_url: str
     environment: str = "development"
 
+    # HubSpot OAuth (optional — defaults to "" so existing tests don't break)
+    hubspot_client_id: str = ""
+    hubspot_client_secret: str = ""
+    hubspot_redirect_uri: str = ""
+
     @field_validator("token_encryption_key")
     @classmethod
     def validate_key(cls, value: str) -> str:
