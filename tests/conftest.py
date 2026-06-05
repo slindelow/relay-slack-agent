@@ -98,6 +98,7 @@ async def engine():
                 """
             )
         )
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {TEST_APP_ROLE}"))
