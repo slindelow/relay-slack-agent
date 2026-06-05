@@ -48,10 +48,8 @@ def build_alert_blocks(
     waiting_str = _human_duration(max(0, waiting_secs))
 
     if sla_deadline is not None:
-        deadline_secs = (sla_deadline.replace(tzinfo=UTC) if sla_deadline.tzinfo is None else sla_deadline - now).total_seconds() if sla_deadline > now else 0
         if sla_deadline > now:
-            deadline_secs = (sla_deadline - now).total_seconds()
-            sla_str = f"⏱ {_human_duration(deadline_secs)} remaining"
+            sla_str = f"⏱ {_human_duration((sla_deadline - now).total_seconds())} remaining"
         else:
             sla_str = "🔴 SLA breached"
     else:
