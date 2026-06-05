@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     hubspot_client_secret: str = ""
     hubspot_redirect_uri: str = ""
 
+    # Embedding provider + API keys
+    embedding_provider: str = "voyage"
+    voyage_api_key: str = ""
+    openai_api_key: str = ""
+
+    # Connector credentials (dev/test fallbacks)
+    google_drive_credentials_json: str = ""
+    github_token: str = ""
+
     @field_validator("token_encryption_key")
     @classmethod
     def validate_key(cls, value: str) -> str:
@@ -57,4 +66,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

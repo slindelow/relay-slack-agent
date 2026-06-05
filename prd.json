@@ -1,0 +1,159 @@
+{
+  "project": "RELAY",
+  "branchName": "ralph/plan-4-source-connectors",
+  "description": "Plan 4 — Source Connectors + Embedding Pipeline. Wire up pgvector, Google Drive connector, GitHub connector, chunking/embedding pipeline, and tenant-safe semantic retrieval. Stops at retrieval — no drafting.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add pgvector extension and knowledge tables migration",
+      "description": "As a developer, I need the vector database infrastructure and knowledge tables in place before any embedding can be stored.",
+      "acceptanceCriteria": [
+        "Enable pgvector extension in Alembic migration 0004_plan4_connectors.py",
+        "source_connectors table: workspace_id (FK workspaces.id CASCADE), connector_type (VARCHAR 32, enum: notion|google_drive|github), config (JSONB), encrypted_credentials (BYTEA), encrypted_credentials_nonce (BYTEA 12), sync_status (VARCHAR 32, default 'not_synced'), last_synced_at (TIMESTAMPTZ nullable), disconnected_at (TIMESTAMPTZ nullable), created_at (TIMESTAMPTZ server_default now())",
+        "source_documents table: workspace_id (FK), connector_id (FK source_connectors.id CASCADE), external_id (TEXT), title (TEXT), url (TEXT nullable), content_hash (VARCHAR 64), provider_updated_at (TIMESTAMPTZ nullable), last_synced_at (TIMESTAMPTZ nullable); UNIQUE(workspace_id, connector_id, external_id)",
+        "knowledge_chunks table: workspace_id (FK), source_document_id (UUID FK nullable), knowledge_entry_id (UUID nullable), chunk_index (INT), content (TEXT), embedding (vector(1536)), embedding_model (VARCHAR 64), embedding_dims (INT), content_hash (VARCHAR 64), created_at (TIMESTAMPTZ); ivfflat index on embedding with lists=100",
+        "retrieval_logs table: id (UUID PK), workspace_id (FK), draft_id (UUID nullable), sources_used (JSONB), query (TEXT), retrieved_at (TIMESTAMPTZ server_default now())",
+        "RLS ENABLE on all four tables; policy pattern: USING (workspace_id::text = current_setting('app.current_workspace_id', true))",
+        "ORM models SourceConnector, SourceDocument, KnowledgeChunk, RetrievalLog added to relay/db/models.py with correct relationships",
+        "alembic upgrade head runs without error",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Install pgvector: add pgvector to pyproject.toml dependencies. Use sqlalchemy_utils or raw DDL for the vector column type. The ivfflat index must use CREATE INDEX ... USING ivfflat (embedding vector_cosine_ops) WITH (lists=100). RLS policy mirrors the pattern in 0001_initial_schema.py."
+    },
+    {
+      "id": "US-002",
+      "title": "Connector interface, registry, and ConnectorType enum",
+      "description": "As a developer, I need a normalized Connector abstract base class and factory so all connector types share one interface.",
+      "acceptanceCriteria": [
+        "relay/connectors/__init__.py created",
+        "relay/connectors/base.py defines abstract class Connector with async methods: sync(workspace_id: uuid.UUID) -> None, search(workspace_id: uuid.UUID, query: str, top_k: int) -> list, citation(chunk) -> dict, disconnect(workspace_id: uuid.UUID) -> None, purge(workspace_id: uuid.UUID) -> None",
+        "relay/connectors/registry.py defines get_connector(connector_type: str) -> Connector that returns the correct class instance; raises ValueError for unknown types",
+        "ConnectorType string enum added to relay/db/models.py: google_drive, github (notion reserved for post-launch)",
+        "Unit tests in tests/test_connector_registry.py: valid types return correct class, invalid type raises ValueError",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Use Python abc.ABC and abc.abstractmethod. The registry maps string type names to classes (not instances). Do not import connector implementations at module level — use lazy imports inside get_connector() to avoid circular imports."
+    },
+    {
+      "id": "US-003",
+      "title": "Shared embedding pipeline",
+      "description": "As a developer, I need a shared async embed_chunks() function that connectors call to turn text chunks into vectors stored in knowledge_chunks.",
+      "acceptanceCriteria": [
+        "relay/connectors/embeddings.py implements async embed_chunks(workspace_id, chunks: list[str], connector_id: uuid.UUID | None, source_document_id: uuid.UUID | None, session: AsyncSession) -> list[uuid.UUID]",
+        "Uses EMBEDDING_PROVIDER env var (voyage|openai, default voyage); import the correct client based on the env var",
+        "For Voyage: use voyageai Python client, model voyage-3 (or voyage-3-lite), batch size 20",
+        "For OpenAI: use openai Python client, model text-embedding-3-small (1536 dims), batch size 20",
+        "Stores KnowledgeChunk rows: embedding_model, embedding_dims, content_hash (sha256 of content), chunk_index",
+        "Idempotent: skip re-embedding if a KnowledgeChunk with the same content_hash already exists for this workspace",
+        "Unit tests in tests/test_embeddings.py: mock embedding API, verify chunk rows created, verify idempotency (same hash → no duplicate row)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "content_hash = hashlib.sha256(content.encode()).hexdigest(). Add voyageai and/or openai to pyproject.toml as optional dependencies. The EMBEDDING_PROVIDER defaults to voyage. chunk_index is the position within the document (0-indexed)."
+    },
+    {
+      "id": "US-004",
+      "title": "Shared chunking utility",
+      "description": "As a developer, I need a chunk_text() function that splits document text into overlapping chunks suitable for embedding.",
+      "acceptanceCriteria": [
+        "relay/connectors/chunking.py implements chunk_text(text: str, max_tokens: int = 800, overlap_tokens: int = 100) -> list[str]",
+        "Uses tiktoken with cl100k_base encoding for token counting",
+        "Chunks respect token boundaries (never cuts mid-token)",
+        "Last chunk may be shorter than max_tokens",
+        "Empty or whitespace-only input returns empty list",
+        "Unit tests in tests/test_chunking.py: empty input, single chunk (short text), multi-chunk, overlap boundary, exact max_tokens boundary",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Add tiktoken to pyproject.toml. Use enc.encode() then split by token index, then enc.decode() back to string. Overlap: the last overlap_tokens tokens of chunk N become the first tokens of chunk N+1."
+    },
+    {
+      "id": "US-005",
+      "title": "Google Drive connector",
+      "description": "As an admin, I want to connect a Google Drive folder so RELAY indexes approved docs and syncs them into knowledge_chunks.",
+      "acceptanceCriteria": [
+        "relay/connectors/google_drive.py implements GoogleDriveConnector(Connector)",
+        "sync(): reads GOOGLE_DRIVE_FOLDER_ID from source_connectors.config jsonb; decrypts credentials from source_connectors.encrypted_credentials; uses Google Drive API (google-api-python-client) to list files in the folder; for each file: export as plain text, compute content_hash, skip if hash unchanged, otherwise chunk with chunk_text() and call embed_chunks(); upsert source_documents row",
+        "disconnect(): sets source_connectors.disconnected_at = now()",
+        "purge(): deletes all knowledge_chunks and source_documents rows for this connector in this workspace",
+        "Connector credentials stored encrypted via relay.crypto.encrypt_token() / decrypt_token() — same pattern as workspace bot tokens",
+        "search() and citation() raise NotImplementedError with message 'Use retrieve() for search' (retrieval is centralized in US-006)",
+        "Unit tests in tests/test_google_drive_connector.py: mock Drive API, verify sync creates source_documents and knowledge_chunks rows, verify unchanged hash skips re-embed, verify purge deletes all rows",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Add google-api-python-client and google-auth to pyproject.toml. OAuth token for Drive is stored in source_connectors.encrypted_credentials as a JSON-serialized dict {access_token, refresh_token, token_uri, client_id, client_secret}. The OAuth connect flow (FastAPI route) is out of scope for this story — use a pre-configured token via GOOGLE_DRIVE_CREDENTIALS_JSON env var for v1."
+    },
+    {
+      "id": "US-006",
+      "title": "GitHub connector",
+      "description": "As an admin, I want to connect selected GitHub repositories so RELAY can cite issues, PRs, releases, and changelogs in customer responses.",
+      "acceptanceCriteria": [
+        "relay/connectors/github.py implements GitHubConnector(Connector)",
+        "sync(): reads repo_list (list of 'owner/repo' strings) from source_connectors.config jsonb; uses GITHUB_TOKEN (decrypted from encrypted_credentials) with PyGitHub; for each repo: fetches open+closed issues (last 200), open+closed PRs (last 200), releases (last 50), selected markdown files from config.markdown_paths list; creates/upserts source_documents; chunks with chunk_text(); calls embed_chunks()",
+        "Each source_document.config jsonb stores: {type: issue|pr|release|markdown, status, labels: [], url, updated_at}",
+        "citation(chunk_row) -> dict: {title, url, status, labels, updated_at, stale: bool} where stale = (now - source_documents.last_synced_at) > 48h",
+        "disconnect() and purge() follow same pattern as GoogleDriveConnector",
+        "Unit tests in tests/test_github_connector.py: mock PyGitHub API, verify issues/PRs/releases sync creates correct rows, verify citation output format, verify stale flag logic",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Add PyGitHub to pyproject.toml. GitHub token stored encrypted in source_connectors.encrypted_credentials. GITHUB_TOKEN env var is the fallback for dev. Markdown files: only files explicitly listed in config.markdown_paths are synced (e.g., CHANGELOG.md, docs/runbook.md). Do not recursively sync entire repos."
+    },
+    {
+      "id": "US-007",
+      "title": "Tenant-safe semantic retrieval",
+      "description": "As a developer, I need a retrieve() function that finds the most relevant knowledge_chunks for a query, always scoped to a single workspace.",
+      "acceptanceCriteria": [
+        "relay/connectors/retrieval.py implements async retrieve(workspace_id: uuid.UUID, query: str, top_k: int = 5, session: AsyncSession) -> list[RetrievedChunk]",
+        "RetrievedChunk dataclass: chunk_id (uuid.UUID), source_document_id (uuid.UUID | None), knowledge_entry_id (uuid.UUID | None), content (str), embedding_model (str), citation (dict)",
+        "Always filters by workspace_id before vector similarity: WHERE knowledge_chunks.workspace_id = :workspace_id ORDER BY embedding <=> :query_embedding LIMIT :top_k",
+        "Embeds query using embed_chunks() with a single-item list; uses the workspace's configured embedding model",
+        "Writes a retrieval_logs row for every call: query, sources_used (list of chunk_ids), retrieved_at",
+        "Unit tests in tests/test_retrieval.py: two workspaces with distinct chunks — verify workspace B chunks never appear in workspace A results; verify retrieval_log written",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "pgvector cosine distance operator is <=>. The SQL: SELECT id, content, source_document_id, knowledge_entry_id, embedding_model FROM knowledge_chunks WHERE workspace_id = :wid ORDER BY embedding <=> :qvec LIMIT :k. citation is built by joining source_documents and calling connector.citation(). For knowledge_entry chunks (knowledge_entry_id is not null), citation provider = 'relay_memory'."
+    },
+    {
+      "id": "US-008",
+      "title": "Celery sync tasks and periodic scheduler",
+      "description": "As a developer, I need Celery tasks to trigger connector syncs and a Beat schedule to run them every 6 hours automatically.",
+      "acceptanceCriteria": [
+        "relay/worker/connector_tasks.py implements: sync_connector(workspace_id_str: str, connector_id_str: str) Celery task; sync_all_connectors() Celery task that queries all active (disconnected_at IS NULL) source_connectors and enqueues sync_connector per row",
+        "sync_connector: loads SourceConnector row, calls get_connector(connector_type).sync(workspace_id), updates last_synced_at and sync_status on success, sets sync_status='error' on exception",
+        "Celery Beat schedule in relay/worker/celery_app.py: sync_all_connectors runs every 6 hours (crontab(hour='*/6'))",
+        "Unit tests in tests/test_connector_tasks.py: mock connector sync(), verify last_synced_at updated, verify sync_status='error' on exception",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Celery Beat config uses beat_schedule dict in celery_app.py. Task args are strings (not UUIDs) for JSON serialization compatibility. Convert to uuid.UUID inside the task body. sync_connector catches all exceptions and sets sync_status='error' — it must not propagate exceptions (one failing connector must not block others)."
+    },
+    {
+      "id": "US-009",
+      "title": "App Home connector status section",
+      "description": "As an admin, I want to see connected sources and their sync status in the App Home so I know if retrieval data is fresh.",
+      "acceptanceCriteria": [
+        "relay/slack/home.py gains a 'Connected Sources' section listing each active source_connectors row: connector type icon, last synced timestamp (human-readable, e.g. '3h ago'), sync_status badge (synced / syncing / error / never), staleness warning if last_synced_at > 24h ago",
+        "Section renders 'No sources connected. Use /relay settings to add a source.' if no active connectors exist",
+        "App Home refresh triggered on home_opened event (already wired) — no new wiring needed",
+        "Unit tests in tests/test_home.py (or existing home test): build_home() with one connector row returns blocks containing the connector type and sync status",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Build the blocks from the SourceConnector ORM rows. Do not call Slack API from inside the block builder — pass data in, return blocks. The icon per connector type: Google Drive = 📄, GitHub = 🐙, default = 🔌. staleness warning text: '⚠️ Last synced over 24h ago — retrieval may be stale.'"
+    }
+  ]
+}

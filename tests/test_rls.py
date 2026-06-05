@@ -11,12 +11,26 @@ Tests are skipped automatically when the database is not reachable.
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
-from relay.db.models import CustomerAccount, Message, MonitoredChannel, Question, QuestionEvent, SlaPolicy, Workspace, WorkspaceSettings
+from relay.db.models import (
+    Alert,
+    Assignment,
+    CustomerAccount,
+    Message,
+    MonitoredChannel,
+    Question,
+    QuestionEvent,
+    SlaPolicy,
+    Snooze,
+    User,
+    Workspace,
+    WorkspaceSettings,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -37,6 +51,13 @@ async def _create_workspace(session, team_id: str, team_name: str = "Test") -> W
 
 async def _create_question_stack(session, workspace: Workspace, suffix: str) -> Question:
     await _set_context(session, workspace.id)
+    owner = User(
+        workspace_id=workspace.id,
+        slack_user_id=f"U_OWNER_{suffix}",
+    )
+    session.add(owner)
+    await session.flush()
+
     sla_policy = (
         await session.execute(
             select(SlaPolicy).where(
@@ -53,6 +74,7 @@ async def _create_question_stack(session, workspace: Workspace, suffix: str) -> 
         external_crm_id=f"hubspot-{suffix}",
         tier="enterprise",
         sla_policy_id=sla_policy.id,
+        owner_user_id=owner.id,
     )
     session.add(account)
     await session.flush()
@@ -234,6 +256,72 @@ async def test_plan_2_question_tables_respect_rls(db_session):
     assert question_ids == {question_a.id}
     assert question_b.id not in question_ids
     assert event_workspace_ids == {ws_a.id}
+
+
+@pytest.mark.asyncio
+async def test_plan_3_sla_tables_respect_rls(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_009_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_009_B")
+    question_a = await _create_question_stack(db_session, ws_a, "RLS009A")
+    question_b = await _create_question_stack(db_session, ws_b, "RLS009B")
+
+    for workspace, question in ((ws_a, question_a), (ws_b, question_b)):
+        await _set_context(db_session, workspace.id)
+        owner = (
+            await db_session.execute(
+                select(User).where(User.workspace_id == workspace.id)
+            )
+        ).scalars().first()
+        assert owner is not None
+
+        db_session.add(
+            Alert(
+                workspace_id=workspace.id,
+                question_id=question.id,
+                recipient_user_id=owner.id,
+                alert_type="primary",
+            )
+        )
+        db_session.add(
+            Snooze(
+                workspace_id=workspace.id,
+                question_id=question.id,
+                snoozed_by_user_id=owner.id,
+                snoozed_until=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        db_session.add(
+            Assignment(
+                workspace_id=workspace.id,
+                question_id=question.id,
+                assignee_user_id=owner.id,
+                assigned_by_user_id=owner.id,
+            )
+        )
+        await db_session.flush()
+
+    await _set_context(db_session, ws_a.id)
+
+    alert_workspace_ids = {
+        row.workspace_id
+        for row in (await db_session.execute(select(Alert))).scalars().all()
+    }
+    snooze_workspace_ids = {
+        row.workspace_id
+        for row in (await db_session.execute(select(Snooze))).scalars().all()
+    }
+    assignment_workspace_ids = {
+        row.workspace_id
+        for row in (await db_session.execute(select(Assignment))).scalars().all()
+    }
+
+    assert alert_workspace_ids == {ws_a.id}
+    assert snooze_workspace_ids == {ws_a.id}
+    assert assignment_workspace_ids == {ws_a.id}
+    assert question_b.id not in {
+        row.question_id
+        for row in (await db_session.execute(select(Alert))).scalars().all()
+    }
 
 
 @pytest.mark.asyncio

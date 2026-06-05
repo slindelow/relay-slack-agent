@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +35,12 @@ class QuestionUrgency(str, enum.Enum):
     high = "high"
     normal = "normal"
     low = "low"
+
+
+class ConnectorType(str, enum.Enum):
+    google_drive = "google_drive"
+    github = "github"
+    notion = "notion"
 
 
 class Base(DeclarativeBase):
@@ -62,6 +69,7 @@ class Workspace(Base):
     crm_connections: Mapped[list["CrmConnection"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     customer_accounts: Mapped[list["CustomerAccount"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     monitored_channels: Mapped[list["MonitoredChannel"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    source_connectors: Mapped[list["SourceConnector"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -490,3 +498,124 @@ class Snooze(Base):
         UniqueConstraint("workspace_id", "id", name="uq_snooze_workspace_id"),
         Index("idx_snoozes_question_active", "question_id", "snoozed_until"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Plan 4 models — source connectors and retrieval
+# ---------------------------------------------------------------------------
+
+
+class SourceConnector(Base):
+    """Configured external knowledge source for a workspace."""
+
+    __tablename__ = "source_connectors"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    connector_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    encrypted_credentials: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_credentials_nonce: Mapped[bytes] = mapped_column(LargeBinary(12), nullable=False)
+    sync_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_synced")
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "connector_type IN ('google_drive','github','notion')",
+            name="ck_source_connectors_type",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_source_connector_workspace_id"),
+        Index("idx_source_connectors_workspace_active", "workspace_id", postgresql_where=text("disconnected_at IS NULL")),
+    )
+
+    workspace: Mapped[Workspace] = relationship(back_populates="source_connectors")
+    documents: Mapped[list["SourceDocument"]] = relationship(back_populates="connector", cascade="all, delete-orphan", overlaps="workspace")
+
+
+class SourceDocument(Base):
+    """One external source item, such as a Drive doc or GitHub issue."""
+
+    __tablename__ = "source_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    connector_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    external_id: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "connector_id"],
+            ["source_connectors.workspace_id", "source_connectors.id"],
+            ondelete="CASCADE",
+            name="fk_source_document_connector_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "connector_id", "external_id", name="uq_source_document_external_id"),
+        UniqueConstraint("workspace_id", "id", name="uq_source_document_workspace_id"),
+        Index("idx_source_documents_workspace_connector", "workspace_id", "connector_id"),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="documents,source_connectors")
+    connector: Mapped[SourceConnector] = relationship(back_populates="documents", overlaps="workspace")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="source_document", cascade="all, delete-orphan", overlaps="workspace")
+
+
+class KnowledgeChunk(Base):
+    """Embedded text chunk used for semantic retrieval."""
+
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    source_document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    knowledge_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_dims: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "source_document_id"],
+            ["source_documents.workspace_id", "source_documents.id"],
+            ondelete="CASCADE",
+            name="fk_knowledge_chunk_source_document_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_knowledge_chunk_workspace_id"),
+        UniqueConstraint("workspace_id", "content_hash", name="uq_knowledge_chunk_content_hash"),
+        CheckConstraint("embedding_dims = 1536", name="ck_knowledge_chunks_embedding_dims"),
+        Index("idx_knowledge_chunks_workspace_source", "workspace_id", "source_document_id"),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="chunks,documents,source_connectors")
+    source_document: Mapped[SourceDocument | None] = relationship(back_populates="chunks", overlaps="workspace")
+
+
+class RetrievalLog(Base):
+    """Audit trail for semantic retrieval calls."""
+
+    __tablename__ = "retrieval_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    sources_used: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    retrieved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "id", name="uq_retrieval_log_workspace_id"),
+        Index("idx_retrieval_logs_workspace_retrieved", "workspace_id", "retrieved_at"),
+    )
+
+    workspace: Mapped[Workspace] = relationship()

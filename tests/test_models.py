@@ -3,12 +3,16 @@ from relay.db.models import (
     ClassificationFeedback,
     CrmConnection,
     CustomerAccount,
+    KnowledgeChunk,
     Message,
     MonitoredChannel,
     Question,
     QuestionEvent,
     QuestionState,
+    RetrievalLog,
     SlaPolicy,
+    SourceConnector,
+    SourceDocument,
     User,
     Workspace,
     WorkspaceSettings,
@@ -35,6 +39,10 @@ def test_all_tenant_tables_have_workspace_id():
         Message,
         Question,
         QuestionEvent,
+        SourceConnector,
+        SourceDocument,
+        KnowledgeChunk,
+        RetrievalLog,
         ClassificationFeedback,
         AuditLog,
     ):
@@ -186,3 +194,69 @@ def test_plan2_models_have_tenant_scoped_fk_constraints():
     for model, names in expected.items():
         constraint_names = {constraint.name for constraint in model.__table__.constraints}
         assert names.issubset(constraint_names)
+
+
+def test_plan4_source_models_have_connector_and_retrieval_fields():
+    connector_cols = {column.key for column in SourceConnector.__table__.columns}
+    assert {
+        "connector_type",
+        "config",
+        "encrypted_credentials",
+        "encrypted_credentials_nonce",
+        "sync_status",
+        "last_synced_at",
+        "disconnected_at",
+    }.issubset(connector_cols)
+
+    document_cols = {column.key for column in SourceDocument.__table__.columns}
+    assert {
+        "connector_id",
+        "external_id",
+        "title",
+        "url",
+        "config",
+        "content_hash",
+        "provider_updated_at",
+        "last_synced_at",
+    }.issubset(document_cols)
+
+    chunk_cols = {column.key for column in KnowledgeChunk.__table__.columns}
+    assert {
+        "source_document_id",
+        "knowledge_entry_id",
+        "chunk_index",
+        "content",
+        "embedding",
+        "embedding_model",
+        "embedding_dims",
+        "content_hash",
+    }.issubset(chunk_cols)
+
+    retrieval_cols = {column.key for column in RetrievalLog.__table__.columns}
+    assert {"draft_id", "sources_used", "query", "retrieved_at"}.issubset(retrieval_cols)
+
+
+def test_plan4_models_have_tenant_scoped_constraints():
+    expected = {
+        SourceConnector: {"uq_source_connector_workspace_id", "ck_source_connectors_type"},
+        SourceDocument: {
+            "fk_source_document_connector_same_workspace",
+            "uq_source_document_external_id",
+            "uq_source_document_workspace_id",
+        },
+        KnowledgeChunk: {
+            "fk_knowledge_chunk_source_document_same_workspace",
+            "uq_knowledge_chunk_workspace_id",
+            "uq_knowledge_chunk_content_hash",
+            "ck_knowledge_chunks_embedding_dims",
+        },
+        RetrievalLog: {"uq_retrieval_log_workspace_id"},
+    }
+    for model, names in expected.items():
+        constraint_names = {constraint.name for constraint in model.__table__.constraints}
+        assert names.issubset(constraint_names)
+
+
+def test_knowledge_chunk_uses_pgvector_1536_embedding():
+    embedding_type = KnowledgeChunk.__table__.columns["embedding"].type
+    assert getattr(embedding_type, "dim", None) == 1536
