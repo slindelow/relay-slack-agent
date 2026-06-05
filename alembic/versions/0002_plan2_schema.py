@@ -39,6 +39,8 @@ def upgrade() -> None:
         sa.Column("encrypted_refresh_token", sa.LargeBinary(), nullable=True),
         sa.Column("encrypted_refresh_token_nonce", sa.LargeBinary(length=12), nullable=True),
         sa.Column("scopes", sa.Text(), nullable=False),
+        sa.Column("hubspot_portal_id", sa.String(length=64), nullable=True),
+        sa.Column("access_token_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("connected_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("last_synced_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("sync_status", sa.String(length=32), nullable=False),
@@ -47,6 +49,8 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("workspace_id", "crm_provider", name="uq_crm_connection_provider"),
     )
+    op.create_unique_constraint("uq_user_workspace_id", "users", ["workspace_id", "id"])
+    op.create_unique_constraint("uq_sla_policy_workspace_id", "sla_policies", ["workspace_id", "id"])
     op.create_table(
         "customer_accounts",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -68,11 +72,12 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["backup_owner_user_id"], ["users.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["owner_user_id"], ["users.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["sla_policy_id"], ["sla_policies.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["workspace_id", "backup_owner_user_id"], ["users.workspace_id", "users.id"], name="fk_customer_backup_owner_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "owner_user_id"], ["users.workspace_id", "users.id"], name="fk_customer_owner_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "sla_policy_id"], ["sla_policies.workspace_id", "sla_policies.id"], name="fk_customer_sla_policy_same_workspace"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("workspace_id", "id", name="uq_customer_account_workspace_id"),
     )
     op.create_index("idx_customer_accounts_workspace_domain", "customer_accounts", ["workspace_id", "domain"])
     op.create_index(
@@ -94,11 +99,12 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("registered_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("registered_by_user_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.ForeignKeyConstraint(["account_id"], ["customer_accounts.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["registered_by_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["workspace_id", "account_id"], ["customer_accounts.workspace_id", "customer_accounts.id"], ondelete="CASCADE", name="fk_channel_account_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "registered_by_user_id"], ["users.workspace_id", "users.id"], name="fk_channel_registered_by_same_workspace"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("workspace_id", "slack_channel_id", name="uq_monitored_channel_workspace"),
+        sa.UniqueConstraint("workspace_id", "id", name="uq_monitored_channel_workspace_id"),
     )
     op.create_table(
         "messages",
@@ -115,10 +121,11 @@ def upgrade() -> None:
         sa.Column("classification_confidence", sa.Float(), nullable=True),
         sa.Column("classification_variant", sa.String(length=4), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["channel_id"], ["monitored_channels.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["workspace_id", "channel_id"], ["monitored_channels.workspace_id", "monitored_channels.id"], ondelete="CASCADE", name="fk_message_channel_same_workspace"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("workspace_id", "channel_id", "slack_message_ts", name="uq_message_slack_ts"),
+        sa.UniqueConstraint("workspace_id", "id", name="uq_message_workspace_id"),
     )
     op.create_index("idx_messages_workspace_channel_ts", "messages", ["workspace_id", "channel_id", "slack_message_ts"])
     op.create_table(
@@ -141,11 +148,12 @@ def upgrade() -> None:
         sa.Column("expired_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("state IN ('detected', 'open', 'claimed', 'resolved', 'expired')", name="ck_questions_state"),
         sa.CheckConstraint("urgency IN ('low', 'normal', 'high', 'critical')", name="ck_questions_urgency"),
-        sa.ForeignKeyConstraint(["account_id"], ["customer_accounts.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["channel_id"], ["monitored_channels.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["message_id"], ["messages.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["workspace_id", "account_id"], ["customer_accounts.workspace_id", "customer_accounts.id"], ondelete="CASCADE", name="fk_question_account_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "channel_id"], ["monitored_channels.workspace_id", "monitored_channels.id"], ondelete="CASCADE", name="fk_question_channel_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "message_id"], ["messages.workspace_id", "messages.id"], ondelete="CASCADE", name="fk_question_message_same_workspace"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("workspace_id", "id", name="uq_question_workspace_id"),
     )
     op.create_index("idx_questions_workspace_state", "questions", ["workspace_id", "state"])
     op.create_index(
@@ -163,8 +171,8 @@ def upgrade() -> None:
         sa.Column("actor_user_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["question_id"], ["questions.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["workspace_id", "actor_user_id"], ["users.workspace_id", "users.id"], name="fk_question_event_actor_same_workspace"),
+        sa.ForeignKeyConstraint(["workspace_id", "question_id"], ["questions.workspace_id", "questions.id"], ondelete="CASCADE", name="fk_question_event_question_same_workspace"),
         sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -201,3 +209,5 @@ def downgrade() -> None:
     op.drop_index("idx_customer_accounts_workspace_domain", table_name="customer_accounts")
     op.drop_table("customer_accounts")
     op.drop_table("crm_connections")
+    op.drop_constraint("uq_sla_policy_workspace_id", "sla_policies", type_="unique")
+    op.drop_constraint("uq_user_workspace_id", "users", type_="unique")

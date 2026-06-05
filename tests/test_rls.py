@@ -14,6 +14,7 @@ import uuid
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 
 from relay.db.models import CustomerAccount, Message, MonitoredChannel, Question, QuestionEvent, SlaPolicy, Workspace, WorkspaceSettings
 
@@ -233,3 +234,34 @@ async def test_plan_2_question_tables_respect_rls(db_session):
     assert question_ids == {question_a.id}
     assert question_b.id not in question_ids
     assert event_workspace_ids == {ws_a.id}
+
+
+@pytest.mark.asyncio
+async def test_tenant_scoped_foreign_keys_reject_cross_workspace_parent_refs(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_008_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_008_B")
+
+    await _set_context(db_session, ws_b.id)
+    account_b = CustomerAccount(
+        workspace_id=ws_b.id,
+        name="Workspace B Account",
+        crm_provider="hubspot",
+        external_crm_id="hubspot-cross-tenant",
+        tier="enterprise",
+    )
+    db_session.add(account_b)
+    await db_session.flush()
+
+    await _set_context(db_session, ws_a.id)
+    db_session.add(
+        MonitoredChannel(
+            workspace_id=ws_a.id,
+            account_id=account_b.id,
+            slack_channel_id="C_CROSS_TENANT",
+            customer_slack_team_id="T_CUSTOMER_CROSS",
+            is_ext_shared=True,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        await db_session.flush()

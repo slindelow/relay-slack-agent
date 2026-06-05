@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -111,7 +111,10 @@ class SlaPolicy(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (UniqueConstraint("workspace_id", "tier_name", name="uq_sla_tier"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "tier_name", name="uq_sla_tier"),
+        UniqueConstraint("workspace_id", "id", name="uq_sla_policy_workspace_id"),
+    )
 
     workspace: Mapped[Workspace] = relationship(back_populates="sla_policies")
 
@@ -129,7 +132,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    __table_args__ = (UniqueConstraint("workspace_id", "slack_user_id", name="uq_user_workspace"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "slack_user_id", name="uq_user_workspace"),
+        UniqueConstraint("workspace_id", "id", name="uq_user_workspace_id"),
+    )
 
     workspace: Mapped[Workspace] = relationship(back_populates="users")
 
@@ -183,6 +189,8 @@ class CrmConnection(Base):
     encrypted_refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     encrypted_refresh_token_nonce: Mapped[bytes | None] = mapped_column(LargeBinary(12), nullable=True)
     scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    hubspot_portal_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_status: Mapped[str] = mapped_column(String(32), nullable=False, default="not_synced")
@@ -202,10 +210,10 @@ class CustomerAccount(Base):
     domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     crm_provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     external_crm_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    backup_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    backup_owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     tier: Mapped[str] = mapped_column(String(32), nullable=False, default="starter")
-    sla_policy_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("sla_policies.id", ondelete="SET NULL"), nullable=True)
+    sla_policy_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     lifecycle_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
     arr: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     renewal_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -217,6 +225,10 @@ class CustomerAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "owner_user_id"], ["users.workspace_id", "users.id"], name="fk_customer_owner_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "backup_owner_user_id"], ["users.workspace_id", "users.id"], name="fk_customer_backup_owner_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "sla_policy_id"], ["sla_policies.workspace_id", "sla_policies.id"], name="fk_customer_sla_policy_same_workspace"),
+        UniqueConstraint("workspace_id", "id", name="uq_customer_account_workspace_id"),
         Index(
             "uq_customer_external_crm_id_active",
             "workspace_id",
@@ -240,16 +252,21 @@ class MonitoredChannel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("customer_accounts.id", ondelete="CASCADE"), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     slack_channel_id: Mapped[str] = mapped_column(String(32), nullable=False)
     slack_channel_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     customer_slack_team_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_ext_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    registered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    registered_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
-    __table_args__ = (UniqueConstraint("workspace_id", "slack_channel_id", name="uq_monitored_channel_workspace"),)
+    __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "account_id"], ["customer_accounts.workspace_id", "customer_accounts.id"], ondelete="CASCADE", name="fk_channel_account_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "registered_by_user_id"], ["users.workspace_id", "users.id"], name="fk_channel_registered_by_same_workspace"),
+        UniqueConstraint("workspace_id", "slack_channel_id", name="uq_monitored_channel_workspace"),
+        UniqueConstraint("workspace_id", "id", name="uq_monitored_channel_workspace_id"),
+    )
 
     workspace: Mapped[Workspace] = relationship(back_populates="monitored_channels")
     account: Mapped[CustomerAccount] = relationship(back_populates="monitored_channels")
@@ -263,7 +280,7 @@ class Message(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("monitored_channels.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     slack_message_ts: Mapped[str] = mapped_column(String(32), nullable=False)
     slack_thread_ts: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sender_slack_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -276,7 +293,9 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "channel_id"], ["monitored_channels.workspace_id", "monitored_channels.id"], ondelete="CASCADE", name="fk_message_channel_same_workspace"),
         UniqueConstraint("workspace_id", "channel_id", "slack_message_ts", name="uq_message_slack_ts"),
+        UniqueConstraint("workspace_id", "id", name="uq_message_workspace_id"),
         Index("idx_messages_workspace_channel_ts", "workspace_id", "channel_id", "slack_message_ts"),
     )
 
@@ -290,9 +309,9 @@ class Question(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("monitored_channels.id", ondelete="CASCADE"), nullable=False)
-    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
-    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("customer_accounts.id", ondelete="CASCADE"), nullable=False)
+    channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False, default="detected")
     urgency: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
     title_excerpt: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -306,6 +325,9 @@ class Question(Base):
     expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "channel_id"], ["monitored_channels.workspace_id", "monitored_channels.id"], ondelete="CASCADE", name="fk_question_channel_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "message_id"], ["messages.workspace_id", "messages.id"], ondelete="CASCADE", name="fk_question_message_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "account_id"], ["customer_accounts.workspace_id", "customer_accounts.id"], ondelete="CASCADE", name="fk_question_account_same_workspace"),
         CheckConstraint(
             "state IN ('detected', 'open', 'claimed', 'resolved', 'expired')",
             name="ck_questions_state",
@@ -314,6 +336,7 @@ class Question(Base):
             "urgency IN ('low', 'normal', 'high', 'critical')",
             name="ck_questions_urgency",
         ),
+        UniqueConstraint("workspace_id", "id", name="uq_question_workspace_id"),
         Index("idx_questions_sla_check", "next_alert_at", "workspace_id", postgresql_where=state.in_(["open", "claimed"])),
         Index("idx_questions_workspace_state", "workspace_id", "state"),
     )
@@ -330,13 +353,17 @@ class QuestionEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     event_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (Index("idx_question_events_question_created", "question_id", "created_at"),)
+    __table_args__ = (
+        ForeignKeyConstraint(["workspace_id", "question_id"], ["questions.workspace_id", "questions.id"], ondelete="CASCADE", name="fk_question_event_question_same_workspace"),
+        ForeignKeyConstraint(["workspace_id", "actor_user_id"], ["users.workspace_id", "users.id"], name="fk_question_event_actor_same_workspace"),
+        Index("idx_question_events_question_created", "question_id", "created_at"),
+    )
 
     workspace: Mapped[Workspace] = relationship()
     question: Mapped[Question] = relationship(back_populates="events")
