@@ -7,6 +7,7 @@ from relay.db.models import (
     MonitoredChannel,
     Question,
     QuestionEvent,
+    QuestionState,
     SlaPolicy,
     User,
     Workspace,
@@ -121,6 +122,16 @@ def test_message_has_slack_idempotency_and_classifier_fields():
     assert required.issubset(cols)
 
 
+def test_message_has_unique_constraint_on_ts():
+    constraint_names = {c.name for c in Message.__table__.constraints}
+    assert "uq_message_slack_ts" in constraint_names
+
+
+def test_question_state_enum_has_five_states():
+    states = {s.value for s in QuestionState}
+    assert states == {"detected", "open", "claimed", "resolved", "expired"}
+
+
 def test_question_has_visible_state_machine_and_sla_fields():
     cols = {column.key for column in Question.__table__.columns}
     required = {
@@ -142,20 +153,3 @@ def test_question_has_visible_state_machine_and_sla_fields():
 def test_question_event_uses_metadata_column_safely():
     assert hasattr(QuestionEvent, "event_metadata")
     assert "metadata" in QuestionEvent.__table__.columns
-
-
-def test_plan2_tenant_models_have_workspace_id():
-    for model in (CrmConnection, CustomerAccount, MonitoredChannel, Message, Question, QuestionEvent):
-        assert "workspace_id" in {column.key for column in model.__table__.columns}, (
-            f"{model.__name__} is missing workspace_id"
-        )
-
-
-def test_monitored_channel_has_customer_slack_team_id():
-    cols = {column.key for column in MonitoredChannel.__table__.columns}
-    assert "customer_slack_team_id" in cols
-
-
-def test_message_has_unique_constraint_on_ts():
-    constraint_names = {c.name for c in Message.__table__.constraints}
-    assert "uq_message_ts" in constraint_names

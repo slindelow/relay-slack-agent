@@ -15,7 +15,7 @@ import uuid
 import pytest
 from sqlalchemy import select, text
 
-from relay.db.models import SlaPolicy, User, Workspace, WorkspaceSettings
+from relay.db.models import CustomerAccount, Message, MonitoredChannel, Question, QuestionEvent, SlaPolicy, Workspace, WorkspaceSettings
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +32,75 @@ async def _create_workspace(session, team_id: str, team_name: str = "Test") -> W
         session.add(SlaPolicy(workspace_id=ws.id, tier_name=tier, response_window_minutes=resp, escalation_window_minutes=esc))
     await session.flush()
     return ws
+
+
+async def _create_question_stack(session, workspace: Workspace, suffix: str) -> Question:
+    await _set_context(session, workspace.id)
+    sla_policy = (
+        await session.execute(
+            select(SlaPolicy).where(
+                SlaPolicy.workspace_id == workspace.id,
+                SlaPolicy.tier_name == "enterprise",
+            )
+        )
+    ).scalar_one()
+    account = CustomerAccount(
+        workspace_id=workspace.id,
+        name=f"Account {suffix}",
+        domain=f"{suffix.lower()}.example.com",
+        crm_provider="hubspot",
+        external_crm_id=f"hubspot-{suffix}",
+        tier="enterprise",
+        sla_policy_id=sla_policy.id,
+    )
+    session.add(account)
+    await session.flush()
+
+    channel = MonitoredChannel(
+        workspace_id=workspace.id,
+        account_id=account.id,
+        slack_channel_id=f"C_{suffix}",
+        customer_slack_team_id=f"T_CUSTOMER_{suffix}",
+        is_ext_shared=True,
+    )
+    session.add(channel)
+    await session.flush()
+
+    message = Message(
+        workspace_id=workspace.id,
+        channel_id=channel.id,
+        slack_message_ts=f"1710000000.{suffix[-3:]}",
+        is_customer_message=True,
+        raw_excerpt="Is the API down?",
+        classification_label=True,
+        classification_confidence=0.92,
+        classification_variant="a",
+    )
+    session.add(message)
+    await session.flush()
+
+    question = Question(
+        workspace_id=workspace.id,
+        channel_id=channel.id,
+        message_id=message.id,
+        account_id=account.id,
+        state="open",
+        urgency="high",
+        title_excerpt="Is the API down?",
+    )
+    session.add(question)
+    await session.flush()
+
+    session.add(
+        QuestionEvent(
+            workspace_id=workspace.id,
+            question_id=question.id,
+            event_type="question.opened",
+            event_metadata={"source": "test"},
+        )
+    )
+    await session.flush()
+    return question
 
 
 async def _set_context(session, workspace_id):
@@ -81,6 +150,8 @@ async def test_workspace_b_cannot_see_workspace_a_settings(db_session):
 async def test_no_context_returns_no_tenant_rows(db_session):
     ws_a = await _create_workspace(db_session, "T_RLS_003_A")
     ws_b = await _create_workspace(db_session, "T_RLS_003_B")
+    await _create_question_stack(db_session, ws_a, "RLS003A")
+    await _create_question_stack(db_session, ws_b, "RLS003B")
 
     await _clear_context(db_session)
 
@@ -89,6 +160,10 @@ async def test_no_context_returns_no_tenant_rows(db_session):
 
     sla_result = await db_session.execute(select(SlaPolicy))
     assert sla_result.scalars().all() == []
+
+    for model in (CustomerAccount, MonitoredChannel, Message, Question, QuestionEvent):
+        result = await db_session.execute(select(model))
+        assert result.scalars().all() == []
 
 
 @pytest.mark.asyncio
@@ -135,3 +210,26 @@ async def test_context_switch_changes_visible_rows(db_session):
 
     assert ws_b.id in ids_as_b
     assert ws_a.id not in ids_as_b
+
+
+@pytest.mark.asyncio
+async def test_plan_2_question_tables_respect_rls(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_007_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_007_B")
+    question_a = await _create_question_stack(db_session, ws_a, "RLS007A")
+    question_b = await _create_question_stack(db_session, ws_b, "RLS007B")
+
+    await _set_context(db_session, ws_a.id)
+
+    account_ids = {row.workspace_id for row in (await db_session.execute(select(CustomerAccount))).scalars().all()}
+    channel_ids = {row.workspace_id for row in (await db_session.execute(select(MonitoredChannel))).scalars().all()}
+    message_ids = {row.workspace_id for row in (await db_session.execute(select(Message))).scalars().all()}
+    question_ids = {row.id for row in (await db_session.execute(select(Question))).scalars().all()}
+    event_workspace_ids = {row.workspace_id for row in (await db_session.execute(select(QuestionEvent))).scalars().all()}
+
+    assert account_ids == {ws_a.id}
+    assert channel_ids == {ws_a.id}
+    assert message_ids == {ws_a.id}
+    assert question_ids == {question_a.id}
+    assert question_b.id not in question_ids
+    assert event_workspace_ids == {ws_a.id}
