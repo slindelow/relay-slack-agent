@@ -18,6 +18,14 @@ dependencies = [
     "httpx>=0.28",
     "aiohttp>=3.12",
     "python-dotenv>=1.0",
+    # Plan 4 — source connectors + embedding pipeline
+    "tiktoken>=0.7",
+    "voyageai>=0.3",
+    "openai>=1.30",
+    "PyGithub>=2.3",
+    "google-api-python-client>=2.130",
+    "google-auth>=2.29",
+    "google-auth-oauthlib>=1.2",
 ]
 
 [dependency-groups]

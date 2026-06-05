@@ -16,7 +16,9 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+    if database_url := os.environ.get("DATABASE_URL"):
+        return database_url
+    return config.file_config.get(config.config_ini_section, "sqlalchemy.url", raw=True)
 
 
 def run_migrations_offline() -> None:
@@ -37,7 +39,7 @@ def do_run_migrations(connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    section = config.get_section(config.config_ini_section, {})
+    section = dict(config.file_config.items(config.config_ini_section, raw=True))
     section["sqlalchemy.url"] = get_url()
     connectable = async_engine_from_config(
         section,
@@ -57,4 +59,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

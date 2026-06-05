@@ -38,6 +38,10 @@ TENANT_TABLES = (
     "alerts",
     "assignments",
     "snoozes",
+    "source_connectors",
+    "source_documents",
+    "knowledge_chunks",
+    "retrieval_logs",
     "classification_feedback",
     "audit_log",
 )

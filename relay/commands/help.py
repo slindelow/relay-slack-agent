@@ -35,13 +35,12 @@ async def relay_help(ack, respond, command):
                     "type": "mrkdwn",
                     "text": (
                         "• `/relay help` - Show this message\n"
-                        "• `/relay register #channel account tier @owner` - Planned in Plan 2\n"
+                        "• `/relay register #channel account tier @owner` - Register a customer channel\n"
                         "• `/relay open` - Planned in Plan 3\n"
-                        "• `/relay ask [question]` - Planned in Plan 5\n"
+                        "• `/relay ask [question]` - Planned in Plan 6\n"
                         "• `/relay pulse` - Planned in Plan 6"
                     ),
                 },
             },
         ],
     )
-
