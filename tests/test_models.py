@@ -81,6 +81,9 @@ def test_classification_feedback_captures_correction_action():
 def test_crm_connection_is_unique_by_provider_per_workspace():
     constraints = {constraint.name for constraint in CrmConnection.__table__.constraints}
     assert "uq_crm_connection_provider" in constraints
+    cols = {column.key for column in CrmConnection.__table__.columns}
+    assert "hubspot_portal_id" in cols
+    assert "access_token_expires_at" in cols
 
 
 def test_customer_account_has_crm_and_ownership_fields():
@@ -153,3 +156,33 @@ def test_question_has_visible_state_machine_and_sla_fields():
 def test_question_event_uses_metadata_column_safely():
     assert hasattr(QuestionEvent, "event_metadata")
     assert "metadata" in QuestionEvent.__table__.columns
+
+
+def test_plan2_models_have_tenant_scoped_fk_constraints():
+    expected = {
+        CustomerAccount: {
+            "fk_customer_owner_same_workspace",
+            "fk_customer_backup_owner_same_workspace",
+            "fk_customer_sla_policy_same_workspace",
+            "uq_customer_account_workspace_id",
+        },
+        MonitoredChannel: {
+            "fk_channel_account_same_workspace",
+            "fk_channel_registered_by_same_workspace",
+            "uq_monitored_channel_workspace_id",
+        },
+        Message: {"fk_message_channel_same_workspace", "uq_message_workspace_id"},
+        Question: {
+            "fk_question_channel_same_workspace",
+            "fk_question_message_same_workspace",
+            "fk_question_account_same_workspace",
+            "uq_question_workspace_id",
+        },
+        QuestionEvent: {
+            "fk_question_event_question_same_workspace",
+            "fk_question_event_actor_same_workspace",
+        },
+    }
+    for model, names in expected.items():
+        constraint_names = {constraint.name for constraint in model.__table__.constraints}
+        assert names.issubset(constraint_names)
