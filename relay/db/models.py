@@ -77,6 +77,7 @@ class Workspace(Base):
     customer_accounts: Mapped[list["CustomerAccount"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     monitored_channels: Mapped[list["MonitoredChannel"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     source_connectors: Mapped[list["SourceConnector"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
+    knowledge_entries: Mapped[list["KnowledgeEntry"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -366,6 +367,7 @@ class Question(Base):
     account: Mapped[CustomerAccount] = relationship(overlaps="channel,message,questions,workspace")
     events: Mapped[list["QuestionEvent"]] = relationship(back_populates="question", cascade="all, delete-orphan")
     drafts: Mapped[list["Draft"]] = relationship(back_populates="question", cascade="all, delete-orphan")
+    knowledge_entries: Mapped[list["KnowledgeEntry"]] = relationship(back_populates="question", foreign_keys="[KnowledgeEntry.workspace_id, KnowledgeEntry.question_id]", overlaps="knowledge_entries,workspace")
 
 
 class QuestionEvent(Base):
@@ -600,6 +602,11 @@ class KnowledgeChunk(Base):
             ondelete="CASCADE",
             name="fk_knowledge_chunk_source_document_same_workspace",
         ),
+        ForeignKeyConstraint(
+            ["workspace_id", "knowledge_entry_id"],
+            ["knowledge_entries.workspace_id", "knowledge_entries.id"],
+            name="fk_knowledge_chunk_entry_same_workspace",
+        ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_chunk_workspace_id"),
         UniqueConstraint("workspace_id", "content_hash", name="uq_knowledge_chunk_content_hash"),
         CheckConstraint("embedding_dims = 1536", name="ck_knowledge_chunks_embedding_dims"),
@@ -608,6 +615,7 @@ class KnowledgeChunk(Base):
 
     workspace: Mapped[Workspace] = relationship(overlaps="chunks,documents,source_connectors")
     source_document: Mapped[SourceDocument | None] = relationship(back_populates="chunks", overlaps="workspace")
+    knowledge_entry: Mapped["KnowledgeEntry | None"] = relationship(back_populates="chunks", foreign_keys="[KnowledgeChunk.workspace_id, KnowledgeChunk.knowledge_entry_id]", overlaps="chunks,source_document,workspace")
 
 
 class Draft(Base):
@@ -784,3 +792,41 @@ class ImpactMetric(Base):
     )
 
     workspace: Mapped[Workspace] = relationship(overlaps="impact_metrics")
+
+
+# ---------------------------------------------------------------------------
+# Plan 6 models — knowledge entries (resolution memory)
+# ---------------------------------------------------------------------------
+
+
+class KnowledgeEntry(Base):
+    """Resolved question captured as a reusable knowledge entry."""
+
+    __tablename__ = "knowledge_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    customer_question: Mapped[str] = mapped_column(Text, nullable=False)
+    internal_answer: Mapped[str] = mapped_column(Text, nullable=False)
+    source_bundle: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    reuse_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="SET NULL",
+            name="fk_knowledge_entry_question_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_knowledge_entry_workspace_id"),
+        Index("idx_knowledge_entries_workspace_created", "workspace_id", "created_at"),
+    )
+
+    # overlaps= silences SAWarning from multiple composite FK paths back to workspace_id
+    workspace: Mapped[Workspace] = relationship(back_populates="knowledge_entries", overlaps="workspace")
+    question: Mapped["Question | None"] = relationship(back_populates="knowledge_entries", foreign_keys=[question_id], overlaps="workspace")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="knowledge_entry", foreign_keys="[KnowledgeChunk.knowledge_entry_id]", overlaps="workspace")
