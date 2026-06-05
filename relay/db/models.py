@@ -241,10 +241,10 @@ class CustomerAccount(Base):
     )
 
     workspace: Mapped[Workspace] = relationship(back_populates="customer_accounts")
-    monitored_channels: Mapped[list["MonitoredChannel"]] = relationship(back_populates="account", cascade="all, delete-orphan")
+    monitored_channels: Mapped[list["MonitoredChannel"]] = relationship(back_populates="account", cascade="all, delete-orphan", overlaps="monitored_channels")
     owner: Mapped["User | None"] = relationship(foreign_keys=[owner_user_id])
     backup_owner: Mapped["User | None"] = relationship(foreign_keys=[backup_owner_user_id])
-    sla_policy: Mapped[SlaPolicy | None] = relationship()
+    sla_policy: Mapped[SlaPolicy | None] = relationship(overlaps="customer_accounts,workspace")
 
 
 class MonitoredChannel(Base):
@@ -268,8 +268,8 @@ class MonitoredChannel(Base):
         UniqueConstraint("workspace_id", "id", name="uq_monitored_channel_workspace_id"),
     )
 
-    workspace: Mapped[Workspace] = relationship(back_populates="monitored_channels")
-    account: Mapped[CustomerAccount] = relationship(back_populates="monitored_channels")
+    workspace: Mapped[Workspace] = relationship(back_populates="monitored_channels", overlaps="monitored_channels")
+    account: Mapped[CustomerAccount] = relationship(back_populates="monitored_channels", overlaps="monitored_channels,workspace")
     registered_by_user: Mapped["User | None"] = relationship(foreign_keys=[registered_by_user_id])
     messages: Mapped[list["Message"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
     questions: Mapped[list["Question"]] = relationship(back_populates="channel", cascade="all, delete-orphan")
@@ -299,9 +299,9 @@ class Message(Base):
         Index("idx_messages_workspace_channel_ts", "workspace_id", "channel_id", "slack_message_ts"),
     )
 
-    workspace: Mapped[Workspace] = relationship()
-    channel: Mapped[MonitoredChannel] = relationship(back_populates="messages")
-    questions: Mapped[list["Question"]] = relationship(back_populates="message", cascade="all, delete-orphan")
+    workspace: Mapped[Workspace] = relationship(overlaps="messages")
+    channel: Mapped[MonitoredChannel] = relationship(back_populates="messages", overlaps="workspace")
+    questions: Mapped[list["Question"]] = relationship(back_populates="message", cascade="all, delete-orphan", overlaps="questions")
 
 
 class Question(Base):
@@ -341,10 +341,13 @@ class Question(Base):
         Index("idx_questions_workspace_state", "workspace_id", "state"),
     )
 
-    workspace: Mapped[Workspace] = relationship()
-    channel: Mapped[MonitoredChannel] = relationship(back_populates="questions")
-    message: Mapped[Message] = relationship(back_populates="questions")
-    account: Mapped[CustomerAccount] = relationship()
+    # overlaps= silences SAWarning: composite FKs make workspace_id reachable via
+    # multiple relationship paths. We always set workspace_id explicitly in
+    # constructors — we never rely on ORM cascade to propagate it.
+    workspace: Mapped[Workspace] = relationship(overlaps="questions")
+    channel: Mapped[MonitoredChannel] = relationship(back_populates="questions", overlaps="questions,workspace")
+    message: Mapped[Message] = relationship(back_populates="questions", overlaps="channel,questions,workspace")
+    account: Mapped[CustomerAccount] = relationship(overlaps="channel,message,questions,workspace")
     events: Mapped[list["QuestionEvent"]] = relationship(back_populates="question", cascade="all, delete-orphan")
 
 
@@ -365,8 +368,8 @@ class QuestionEvent(Base):
         Index("idx_question_events_question_created", "question_id", "created_at"),
     )
 
-    workspace: Mapped[Workspace] = relationship()
-    question: Mapped[Question] = relationship(back_populates="events")
+    workspace: Mapped[Workspace] = relationship(overlaps="events")
+    question: Mapped[Question] = relationship(back_populates="events", overlaps="workspace")
     actor: Mapped["User | None"] = relationship(foreign_keys=[actor_user_id])
 
 
@@ -415,7 +418,7 @@ class Alert(Base):
     )
 
     workspace: Mapped[Workspace] = relationship()
-    question: Mapped[Question] = relationship()
+    question: Mapped[Question] = relationship(overlaps="workspace")
     recipient: Mapped[User] = relationship(foreign_keys=[recipient_user_id])
 
 
@@ -454,7 +457,7 @@ class Assignment(Base):
     )
 
     workspace: Mapped[Workspace] = relationship()
-    question: Mapped[Question] = relationship()
+    question: Mapped[Question] = relationship(overlaps="workspace")
     assignee: Mapped[User] = relationship(foreign_keys=[assignee_user_id])
     assigned_by: Mapped["User | None"] = relationship(foreign_keys=[assigned_by_user_id])
 
