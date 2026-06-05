@@ -8,8 +8,8 @@ class Connector(abc.ABC):
     """All source connectors implement this interface."""
 
     @abc.abstractmethod
-    async def sync(self, workspace_id: uuid.UUID) -> None:
-        """Fetch remote documents, chunk, embed, and upsert into knowledge_chunks."""
+    async def sync(self, workspace_id: uuid.UUID, connector_id: uuid.UUID) -> None:
+        """Fetch remote documents, chunk, embed, and upsert for one connector."""
 
     @abc.abstractmethod
     async def search(self, workspace_id: uuid.UUID, query: str, top_k: int) -> list:

@@ -70,6 +70,27 @@ async def test_retrieve_writes_retrieval_log():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_can_associate_log_with_draft():
+    workspace_id = uuid.uuid4()
+    draft_id = uuid.uuid4()
+    chunk_row = _make_chunk_row(workspace_id)
+
+    session = AsyncMock()
+    session.add = MagicMock()
+
+    query_result = MagicMock()
+    query_result.fetchall.return_value = [chunk_row]
+    session.execute = AsyncMock(return_value=query_result)
+
+    with patch("relay.connectors.retrieval._get_embeddings", new=AsyncMock(return_value=[FAKE_VECTOR])):
+        await retrieve(workspace_id, "customer question", session, draft_id=draft_id)
+
+    added_args = [call.args[0] for call in session.add.call_args_list]
+    log = next(obj for obj in added_args if obj.__class__.__name__ == "RetrievalLog")
+    assert log.draft_id == draft_id
+
+
+@pytest.mark.asyncio
 async def test_retrieve_empty_results():
     workspace_id = uuid.uuid4()
     session = AsyncMock()
@@ -87,3 +108,15 @@ async def test_retrieve_empty_results():
     from relay.db.models import RetrievalLog
     added_args = [call.args[0] for call in session.add.call_args_list]
     assert any(isinstance(obj, RetrievalLog) for obj in added_args)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_rejects_empty_query():
+    with pytest.raises(ValueError, match="query"):
+        await retrieve(uuid.uuid4(), "   ", AsyncMock())
+
+
+@pytest.mark.asyncio
+async def test_retrieve_rejects_invalid_top_k():
+    with pytest.raises(ValueError, match="top_k"):
+        await retrieve(uuid.uuid4(), "question", AsyncMock(), top_k=0)

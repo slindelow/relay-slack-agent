@@ -39,7 +39,7 @@ async def test_sync_connector_updates_last_synced_at():
     session = AsyncMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = connector_row
-    session.execute = AsyncMock(return_value=result)
+    session.execute = AsyncMock(side_effect=[result, result])
 
     mock_connector = AsyncMock()
     mock_connector.sync = AsyncMock()
@@ -52,7 +52,7 @@ async def test_sync_connector_updates_last_synced_at():
 
     assert connector_row.sync_status == "synced"
     assert connector_row.last_synced_at is not None
-    mock_connector.sync.assert_awaited_once_with(workspace_id)
+    mock_connector.sync.assert_awaited_once_with(workspace_id, connector_id)
 
 
 @pytest.mark.asyncio
@@ -64,7 +64,7 @@ async def test_sync_connector_sets_error_on_exception():
     session = AsyncMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = connector_row
-    session.execute = AsyncMock(return_value=result)
+    session.execute = AsyncMock(side_effect=[result, result])
 
     mock_connector = AsyncMock()
     mock_connector.sync = AsyncMock(side_effect=RuntimeError("API error"))
@@ -76,6 +76,7 @@ async def test_sync_connector_sets_error_on_exception():
         await _sync_connector_async(workspace_id, connector_id)
 
     assert connector_row.sync_status == "error"
+    mock_connector.sync.assert_awaited_once_with(workspace_id, connector_id)
 
 
 @pytest.mark.asyncio

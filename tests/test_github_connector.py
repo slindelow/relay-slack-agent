@@ -123,7 +123,7 @@ async def test_sync_creates_rows_for_issues_prs_releases():
     ):
         mock_settings.return_value.token_encryption_key_bytes = key
         mock_settings.return_value.github_token = ""
-        await GitHubConnector().sync(workspace_id)
+        await GitHubConnector().sync(workspace_id, connector_id)
 
     assert session.add.call_count == 4  # issue + pr + release + markdown
     assert session.flush.call_count == 4
@@ -172,7 +172,7 @@ async def test_sync_skips_unchanged_hash():
     ):
         mock_settings.return_value.token_encryption_key_bytes = key
         mock_settings.return_value.github_token = ""
-        await GitHubConnector().sync(workspace_id)
+        await GitHubConnector().sync(workspace_id, connector_id)
 
     mock_embed.assert_not_called()
 
