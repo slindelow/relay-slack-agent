@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -55,17 +56,16 @@ def parse_hubspot_state(state: str, signing_key: bytes) -> UUID:
     """Validate a HubSpot OAuth state token and return its workspace id."""
     try:
         payload_b64, signature_b64 = state.split(".", 1)
-    except ValueError as exc:
+        expected = hmac.new(signing_key, payload_b64.encode("ascii"), hashlib.sha256).digest()
+        actual = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
+        if not hmac.compare_digest(expected, actual):
+            raise HubSpotOAuthError("Invalid OAuth state signature")
+
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+        payload = json.loads(payload_bytes)
+        return UUID(payload["workspace_id"])
+    except (ValueError, KeyError, json.JSONDecodeError, binascii.Error) as exc:
         raise HubSpotOAuthError("Invalid OAuth state format") from exc
-
-    expected = hmac.new(signing_key, payload_b64.encode("ascii"), hashlib.sha256).digest()
-    actual = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
-    if not hmac.compare_digest(expected, actual):
-        raise HubSpotOAuthError("Invalid OAuth state signature")
-
-    payload_bytes = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
-    payload = json.loads(payload_bytes)
-    return UUID(payload["workspace_id"])
 
 
 def hubspot_oauth_url(client_id: str, redirect_uri: str, state: str) -> str:

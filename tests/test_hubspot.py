@@ -89,6 +89,11 @@ def test_hubspot_oauth_state_rejects_tampering():
         parse_hubspot_state(f"{tampered_payload}.{signature}", bytes.fromhex("a" * 64))
 
 
+def test_hubspot_oauth_state_rejects_malformed_input():
+    with pytest.raises(HubSpotOAuthError):
+        parse_hubspot_state("not-a-valid-state", bytes.fromhex("a" * 64))
+
+
 # ---------------------------------------------------------------------------
 # 2. Token exchange — success
 # ---------------------------------------------------------------------------
