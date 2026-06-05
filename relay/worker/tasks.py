@@ -93,25 +93,24 @@ async def _process_slack_event_async(payload: dict) -> None:
         session.add(msg)
         await session.flush()
 
-        if result_cls.confidence >= settings.classifier_open_threshold:
-            question = Question(
-                workspace_id=workspace_id,
-                channel_id=channel.id,
-                message_id=msg.id,
-                account_id=channel.account_id,
-                state=QuestionState.open.value,
-                urgency=QuestionUrgency.normal.value,
-                title_excerpt=text[:255],
-            )
-            session.add(question)
-        elif result_cls.confidence >= settings.classifier_candidate_threshold:
-            question = Question(
-                workspace_id=workspace_id,
-                channel_id=channel.id,
-                message_id=msg.id,
-                account_id=channel.account_id,
-                state=QuestionState.detected.value,
-                urgency=QuestionUrgency.normal.value,
-                title_excerpt=text[:255],
-            )
-            session.add(question)
+        # Only create a Question when the classifier says it IS a question.
+        # Checking confidence alone is wrong: a high-confidence "not a question"
+        # would create a spurious Question row.
+        if result_cls.is_question:
+            if result_cls.confidence >= settings.classifier_open_threshold:
+                state = QuestionState.open.value
+            elif result_cls.confidence >= settings.classifier_candidate_threshold:
+                state = QuestionState.detected.value
+            else:
+                state = None  # below both thresholds — discard
+
+            if state is not None:
+                session.add(Question(
+                    workspace_id=workspace_id,
+                    channel_id=channel.id,
+                    message_id=msg.id,
+                    account_id=channel.account_id,
+                    state=state,
+                    urgency=QuestionUrgency.normal.value,
+                    title_excerpt=text[:255],
+                ))
