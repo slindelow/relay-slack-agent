@@ -1,0 +1,137 @@
+"""Integration tests for RLS tenant isolation.
+
+These tests prove that the workspace_isolation RLS policy correctly:
+- Shows workspace A's rows when the context is set to workspace A.
+- Shows workspace B's rows when the context is set to workspace B.
+- Returns no tenant rows when the context is unset.
+- Leaves the workspaces table itself readable without context (it is not tenant-scoped).
+
+Requires a live PostgreSQL test database (see tests/conftest.py).
+Tests are skipped automatically when the database is not reachable.
+"""
+
+import uuid
+
+import pytest
+from sqlalchemy import select, text
+
+from relay.db.models import SlaPolicy, User, Workspace, WorkspaceSettings
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+async def _create_workspace(session, team_id: str, team_name: str = "Test") -> Workspace:
+    ws = Workspace(slack_team_id=team_id, slack_team_name=team_name)
+    session.add(ws)
+    await session.flush()
+    await _set_context(session, ws.id)
+    session.add(WorkspaceSettings(workspace_id=ws.id))
+    for tier, resp, esc in (("enterprise", 30, 45), ("pro", 120, 180), ("starter", 480, 600)):
+        session.add(SlaPolicy(workspace_id=ws.id, tier_name=tier, response_window_minutes=resp, escalation_window_minutes=esc))
+    await session.flush()
+    return ws
+
+
+async def _set_context(session, workspace_id):
+    await session.execute(
+        text("SELECT set_config('app.current_workspace_id', :wid, true)"),
+        {"wid": str(workspace_id)},
+    )
+
+
+async def _clear_context(session):
+    await session.execute(text("SELECT set_config('app.current_workspace_id', '', true)"))
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_workspace_a_cannot_see_workspace_b_settings(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_001_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_001_B")
+
+    await _set_context(db_session, ws_a.id)
+
+    result = await db_session.execute(select(WorkspaceSettings))
+    visible = {row.workspace_id for row in result.scalars().all()}
+
+    assert ws_a.id in visible
+    assert ws_b.id not in visible
+
+
+@pytest.mark.asyncio
+async def test_workspace_b_cannot_see_workspace_a_settings(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_002_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_002_B")
+
+    await _set_context(db_session, ws_b.id)
+
+    result = await db_session.execute(select(WorkspaceSettings))
+    visible = {row.workspace_id for row in result.scalars().all()}
+
+    assert ws_b.id in visible
+    assert ws_a.id not in visible
+
+
+@pytest.mark.asyncio
+async def test_no_context_returns_no_tenant_rows(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_003_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_003_B")
+
+    await _clear_context(db_session)
+
+    settings_result = await db_session.execute(select(WorkspaceSettings))
+    assert settings_result.scalars().all() == []
+
+    sla_result = await db_session.execute(select(SlaPolicy))
+    assert sla_result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_workspaces_table_readable_without_context(db_session):
+    ws = await _create_workspace(db_session, "T_RLS_004")
+    await _clear_context(db_session)
+
+    result = await db_session.execute(
+        select(Workspace).where(Workspace.slack_team_id == "T_RLS_004")
+    )
+    found = result.scalar_one_or_none()
+    assert found is not None
+    assert found.id == ws.id
+
+
+@pytest.mark.asyncio
+async def test_sla_policies_respect_rls(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_005_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_005_B")
+
+    await _set_context(db_session, ws_a.id)
+    result = await db_session.execute(select(SlaPolicy))
+    workspace_ids = {row.workspace_id for row in result.scalars().all()}
+
+    assert ws_a.id in workspace_ids
+    assert ws_b.id not in workspace_ids
+
+
+@pytest.mark.asyncio
+async def test_context_switch_changes_visible_rows(db_session):
+    ws_a = await _create_workspace(db_session, "T_RLS_006_A")
+    ws_b = await _create_workspace(db_session, "T_RLS_006_B")
+
+    await _set_context(db_session, ws_a.id)
+    result_a = await db_session.execute(select(WorkspaceSettings))
+    ids_as_a = {row.workspace_id for row in result_a.scalars().all()}
+
+    await _set_context(db_session, ws_b.id)
+    result_b = await db_session.execute(select(WorkspaceSettings))
+    ids_as_b = {row.workspace_id for row in result_b.scalars().all()}
+
+    assert ws_a.id in ids_as_a
+    assert ws_b.id not in ids_as_a
+
+    assert ws_b.id in ids_as_b
+    assert ws_a.id not in ids_as_b

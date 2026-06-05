@@ -4,11 +4,12 @@
 RELAY is a Slack-native customer-success agent for teams managing Slack Connect customer channels. It detects unanswered customer questions, tracks SLA risk, retrieves context from CRM/docs/GitHub, drafts cited responses, and requires human approval before posting.
 
 ## Current Status
-Repo live at `https://github.com/slindelow/relay-slack-agent`. Two open PRs: #1 `codex/repo-setup` (collaboration docs + Plan 1 overview) and #2 `claude/prd-update` (PRD v2 + detailed Plan 1 with code). PR #1 reviewed and approved by Claude — recommended merge order: #1 first, then #2. No code exists yet; Phase 0 classifier validation is the next work item.
+Repo live at `https://github.com/slindelow/relay-slack-agent`. PR #1 (`codex/repo-setup`) and PR #2 (`claude/prd-update`) are merged. Codex has started Plan 1 foundation implementation on `codex/plan-1-foundation`.
 
 ## Source Of Truth
 - `RELAY_PRD.md`
 - `docs/PLAN_1_FOUNDATION.md`
+- `docs/superpowers/plans/2026-06-04-relay-plan1-foundation.md`
 - `docs/CLAUDE_OPERATING_BRIEF.md`
 - This file
 
@@ -25,17 +26,17 @@ Repo live at `https://github.com/slindelow/relay-slack-agent`. Two open PRs: #1 
 ## Agent Updates
 
 ### Codex — 2026-06-04
-Branch: codex/repo-setup → PR #1
-Status: Collaboration docs committed and pushed. PR #1 open.
-Commits: `bd0be81`, `3222361`
-Tests run: none
-Open questions: GitHub CLI auth stale in Codex shell.
-Next recommended step: Merge PR #1 after Claude review, then start `codex/plan-1-foundation`.
+Branch: codex/plan-1-foundation → PR #3 (open)
+Status: Full Plan 1 foundation implemented and pushed. PR #3 open against main. GitHub Actions CI now runs with a Postgres service; latest work fixes asyncpg/Postgres tenant context setup and runs RLS integration tests as a non-superuser app role so CI cannot bypass RLS.
+Commits: `54c8f29` feat(plan-1) scaffold · `ec074aa` + `2acf9c4` README/integration tests · `8ddfe56` + `39cb866` CI · `3343faa` integration fixture stabilization · `0da12a2` RLS context fix · current non-superuser RLS fixture fix pending commit.
+Tests run: `/Users/sofialindelow/.local/bin/uv run pytest tests -v --tb=short` -> 38 passed, 14 skipped; critical coverage command passed locally, with OAuth coverage low because local Postgres-backed tests skipped.
+Open questions: none — waiting on CI to confirm Postgres/RLS integration path.
+Next recommended step: Push non-superuser RLS fixture fix, confirm CI green, then ask Claude to review PR #3 before merge.
 
 ### Claude — 2026-06-04
-Branch: claude/prd-update → PR #2
-Status: Full revised PRD v2.0 committed (RELAY_PRD.md). Detailed implementation Plan 1 with code at docs/superpowers/plans/2026-06-04-relay-plan1-foundation.md. PR #1 reviewed and approved with comments (5 suggestions, none blocking). Recommended merge order: PR #1 first, PR #2 second.
-Commits: `4407a85 docs: revised PRD (v2.0), Plan 1 implementation details, HANDOFF update`
-Tests run: none (no code exists yet)
-Open questions: After both PRs merge — should Phase 0 classifier validation start on `claude/classifier-validation` or `codex/plan-1-foundation`? Recommend Claude takes Phase 0 (offline Python tooling, no Slack integration) while Codex takes Phase 1 scaffolding in parallel.
-Next recommended step: Merge PR #1 → merge PR #2 → Claude opens `claude/classifier-validation` for Phase 0 → Codex opens `codex/plan-1-foundation` for scaffold + crypto + config.
+Branch: codex/plan-1-foundation (same branch — added docs + tests)
+Status: Added `README.md`, `tests/conftest.py`, `tests/test_oauth.py`, `tests/test_rls.py`. Also added `FORCE ROW LEVEL SECURITY` to migration and test fixtures (prevents bypass by table owner). Fixed README classifier CLI invocation to match actual positional-arg signature.
+Commits: `ec074aa` docs+test · `2acf9c4` fix FORCE RLS
+Tests run: 37 pass, 14 skip (integration tests need Postgres — skip gracefully without it).
+Open questions: Plan 2 scope — channel registration and question machine. No blockers.
+Next recommended step: Merge PR #3 → open `codex/plan-2-hubspot` for HubSpot OAuth + account import + channel registration + question machine.

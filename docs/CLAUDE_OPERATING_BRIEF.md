@@ -24,6 +24,7 @@ RELAY detects unanswered customer questions in Slack Connect channels, uses CRM/
 - Do not edit files currently owned by an active Codex branch unless explicitly assigned.
 - Keep PRs scoped and reviewable.
 - Update `docs/HANDOFF.md` before ending a session.
+- **Commit incrementally.** Commit after each completed file or logical unit of work — do not batch all changes into one end-of-session commit. Both Claude and Codex follow this rule.
 
 ## Branch Naming
 Use:
