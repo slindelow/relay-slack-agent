@@ -3,6 +3,7 @@
 import logging
 
 from relay.worker.celery_app import celery
+from relay.worker.hubspot_tasks import sync_hubspot_accounts  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
