@@ -1,6 +1,7 @@
 """Unit tests for HubSpot OAuth helpers. All tests mock httpx — no network calls."""
 
 import pytest
+import uuid
 from sqlalchemy import select
 from urllib.parse import parse_qs, urlparse
 
@@ -11,9 +12,11 @@ from relay.integrations.hubspot import (
     HUBSPOT_AUTH_BASE,
     HubSpotAPIError,
     HubSpotOAuthError,
+    build_hubspot_state,
     exchange_code_for_tokens,
     fetch_hubspot_companies,
     hubspot_oauth_url,
+    parse_hubspot_state,
     refresh_access_token,
     store_hubspot_connection,
 )
@@ -67,6 +70,22 @@ def test_hubspot_oauth_url_contains_required_params():
     assert "crm.objects.companies.read" in scope_str
     assert "crm.objects.contacts.read" in scope_str
     assert "crm.objects.deals.read" in scope_str
+
+
+def test_hubspot_oauth_state_round_trips_workspace_id():
+    workspace_id = uuid.uuid4()
+    state = build_hubspot_state(workspace_id, bytes.fromhex("a" * 64))
+
+    assert parse_hubspot_state(state, bytes.fromhex("a" * 64)) == workspace_id
+
+
+def test_hubspot_oauth_state_rejects_tampering():
+    workspace_id = uuid.uuid4()
+    state = build_hubspot_state(workspace_id, bytes.fromhex("a" * 64))
+    tampered = state[:-1] + ("A" if state[-1] != "A" else "B")
+
+    with pytest.raises(HubSpotOAuthError):
+        parse_hubspot_state(tampered, bytes.fromhex("a" * 64))
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +207,8 @@ async def test_store_hubspot_connection_encrypts_and_upserts(db_session, relay_s
             "access_token": "access-token-1",
             "refresh_token": "refresh-token-1",
             "scope": "crm.objects.companies.read",
+            "hub_id": 12345,
+            "expires_in": 1800,
         },
     )
     await db_session.flush()
@@ -195,6 +216,8 @@ async def test_store_hubspot_connection_encrypts_and_upserts(db_session, relay_s
     assert connection.crm_provider == "hubspot"
     assert connection.encrypted_access_token != b"access-token-1"
     assert connection.encrypted_refresh_token != b"refresh-token-1"
+    assert connection.hubspot_portal_id == "12345"
+    assert connection.access_token_expires_at is not None
     assert connection.disconnected_at is None
 
     key = get_settings().token_encryption_key_bytes

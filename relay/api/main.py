@@ -1,16 +1,21 @@
 """FastAPI app mounting Slack Bolt."""
 
 import logging
-import secrets
-import uuid
+from uuid import UUID
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 
 from relay.config import get_settings
-from relay.crypto import encrypt_token
-from relay.integrations.hubspot import HubSpotOAuthError, exchange_code_for_tokens, hubspot_oauth_url
+from relay.integrations.hubspot import (
+    HubSpotOAuthError,
+    build_hubspot_state,
+    exchange_code_for_tokens,
+    hubspot_oauth_url,
+    parse_hubspot_state,
+    store_hubspot_connection,
+)
 from relay.slack.app import app as bolt_app
 
 logger = logging.getLogger(__name__)
@@ -43,8 +48,16 @@ async def slack_oauth_redirect(req: Request):
 async def hubspot_install(req: Request):
     """Redirect admin to HubSpot OAuth authorization page."""
     settings = get_settings()
-    # Use workspace_id from query param as state if provided, else random
-    state = req.query_params.get("workspace_id") or secrets.token_urlsafe(16)
+    workspace_id = req.query_params.get("workspace_id")
+    if not workspace_id:
+        return JSONResponse({"error": "missing workspace_id"}, status_code=400)
+    try:
+        state = build_hubspot_state(
+            workspace_id=UUID(workspace_id),
+            signing_key=settings.token_encryption_key_bytes,
+        )
+    except ValueError:
+        return JSONResponse({"error": "invalid workspace_id"}, status_code=400)
     url = hubspot_oauth_url(
         client_id=settings.hubspot_client_id,
         redirect_uri=settings.hubspot_redirect_uri,
@@ -68,11 +81,12 @@ async def hubspot_oauth_redirect(
     if not state:
         return JSONResponse({"error": "missing state parameter"}, status_code=400)
     try:
-        workspace_uuid = uuid.UUID(state)
-    except ValueError:
-        return JSONResponse(
-            {"error": "invalid state — expected a workspace UUID"}, status_code=400
+        workspace_uuid = parse_hubspot_state(
+            state,
+            signing_key=get_settings().token_encryption_key_bytes,
         )
+    except (HubSpotOAuthError, ValueError, KeyError):
+        return JSONResponse({"error": "invalid state"}, status_code=400)
 
     settings = get_settings()
 
@@ -91,52 +105,12 @@ async def hubspot_oauth_redirect(
         logger.exception("Unexpected error during HubSpot token exchange: %s", exc)
         return JSONResponse({"error": "internal_error"}, status_code=500)
 
-    access_token = token_data.get("access_token", "")
-    refresh_token = token_data.get("refresh_token", "")
-
-    # Encrypt tokens
-    key = settings.token_encryption_key_bytes
-    enc_access, nonce_access = encrypt_token(access_token, key)
-    enc_refresh, nonce_refresh = encrypt_token(refresh_token, key) if refresh_token else (None, None)
-
     # Upsert CrmConnection
     try:
-        from sqlalchemy import select
-        from datetime import datetime, timezone
-
-        from relay.db.models import CrmConnection
         from relay.db.session import get_session
 
         async with get_session(workspace_id=workspace_uuid) as session:
-            stmt = select(CrmConnection).where(
-                CrmConnection.workspace_id == workspace_uuid,
-                CrmConnection.crm_provider == "hubspot",
-            )
-            result = await session.execute(stmt)
-            connection = result.scalar_one_or_none()
-
-            now = datetime.now(tz=timezone.utc)
-            if connection is None:
-                connection = CrmConnection(
-                    workspace_id=workspace_uuid,
-                    crm_provider="hubspot",
-                    encrypted_access_token=enc_access,
-                    encrypted_access_token_nonce=nonce_access,
-                    encrypted_refresh_token=enc_refresh,
-                    encrypted_refresh_token_nonce=nonce_refresh,
-                    connected_at=now,
-                    sync_status="not_synced",
-                    disconnected_at=None,
-                )
-                session.add(connection)
-            else:
-                connection.encrypted_access_token = enc_access
-                connection.encrypted_access_token_nonce = nonce_access
-                connection.encrypted_refresh_token = enc_refresh
-                connection.encrypted_refresh_token_nonce = nonce_refresh
-                connection.connected_at = now
-                connection.sync_status = "not_synced"
-                connection.disconnected_at = None
+            await store_hubspot_connection(session, workspace_uuid, token_data)
     except Exception as exc:
         logger.exception("Failed to store HubSpot connection for workspace_id=%s: %s", workspace_uuid, exc)
         return JSONResponse({"error": "db_error", "detail": str(exc)}, status_code=500)
@@ -151,4 +125,3 @@ async def hubspot_oauth_redirect(
         # Non-fatal — connection is stored, sync can be triggered later
 
     return JSONResponse({"status": "connected"})
-

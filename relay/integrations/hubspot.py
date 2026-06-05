@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 from uuid import UUID
@@ -30,6 +36,36 @@ class HubSpotOAuthError(Exception):
 
 class HubSpotAPIError(Exception):
     pass
+
+
+def build_hubspot_state(workspace_id: UUID, signing_key: bytes) -> str:
+    """Build a signed OAuth state token containing the workspace id."""
+    payload = {
+        "workspace_id": str(workspace_id),
+        "nonce": secrets.token_urlsafe(16),
+    }
+    payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode("ascii").rstrip("=")
+    signature = hmac.new(signing_key, payload_b64.encode("ascii"), hashlib.sha256).digest()
+    signature_b64 = base64.urlsafe_b64encode(signature).decode("ascii").rstrip("=")
+    return f"{payload_b64}.{signature_b64}"
+
+
+def parse_hubspot_state(state: str, signing_key: bytes) -> UUID:
+    """Validate a HubSpot OAuth state token and return its workspace id."""
+    try:
+        payload_b64, signature_b64 = state.split(".", 1)
+    except ValueError as exc:
+        raise HubSpotOAuthError("Invalid OAuth state format") from exc
+
+    expected = hmac.new(signing_key, payload_b64.encode("ascii"), hashlib.sha256).digest()
+    actual = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
+    if not hmac.compare_digest(expected, actual):
+        raise HubSpotOAuthError("Invalid OAuth state signature")
+
+    payload_bytes = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
+    payload = json.loads(payload_bytes)
+    return UUID(payload["workspace_id"])
 
 
 def hubspot_oauth_url(client_id: str, redirect_uri: str, state: str) -> str:
@@ -146,6 +182,11 @@ async def store_hubspot_connection(
     access_token = token_response["access_token"]
     refresh_token = token_response.get("refresh_token")
     scopes = token_response.get("scope", HUBSPOT_SCOPES)
+    hubspot_portal_id = token_response.get("hub_id") or token_response.get("hubspot_portal_id")
+    expires_in = token_response.get("expires_in")
+    access_token_expires_at = None
+    if expires_in is not None:
+        access_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
     key = get_settings().token_encryption_key_bytes
 
     await session.execute(
@@ -176,6 +217,8 @@ async def store_hubspot_connection(
             encrypted_refresh_token=encrypted_refresh_token,
             encrypted_refresh_token_nonce=refresh_nonce,
             scopes=scopes,
+            hubspot_portal_id=str(hubspot_portal_id) if hubspot_portal_id is not None else None,
+            access_token_expires_at=access_token_expires_at,
             sync_status="not_synced",
         )
         session.add(connection)
@@ -185,6 +228,8 @@ async def store_hubspot_connection(
         connection.encrypted_refresh_token = encrypted_refresh_token
         connection.encrypted_refresh_token_nonce = refresh_nonce
         connection.scopes = scopes
+        connection.hubspot_portal_id = str(hubspot_portal_id) if hubspot_portal_id is not None else None
+        connection.access_token_expires_at = access_token_expires_at
         connection.sync_status = "not_synced"
         connection.disconnected_at = None
 
