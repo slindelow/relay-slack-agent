@@ -21,6 +21,12 @@ TENANT_TABLES = (
     "workspace_settings",
     "sla_policies",
     "users",
+    "crm_connections",
+    "customer_accounts",
+    "monitored_channels",
+    "messages",
+    "questions",
+    "question_events",
     "classification_feedback",
     "audit_log",
 )
