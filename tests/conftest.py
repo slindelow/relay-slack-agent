@@ -16,6 +16,14 @@ from sqlalchemy.pool import NullPool
 from relay.config import get_settings
 from relay.db.models import Base
 
+os.environ.setdefault("SLACK_CLIENT_ID", "client")
+os.environ.setdefault("SLACK_CLIENT_SECRET", "secret")
+os.environ.setdefault("SLACK_SIGNING_SECRET", "signing")
+os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://relay:relay@localhost:5432/relay")
+os.environ.setdefault("TOKEN_ENCRYPTION_KEY", "a" * 64)
+os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test")
+os.environ.setdefault("APP_BASE_URL", "https://relay.example.com")
+
 TENANT_TABLES = (
     "workspace_tokens",
     "workspace_settings",
@@ -27,6 +35,9 @@ TENANT_TABLES = (
     "messages",
     "questions",
     "question_events",
+    "alerts",
+    "assignments",
+    "snoozes",
     "classification_feedback",
     "audit_log",
 )
