@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, ForeignKeyConstraint, Index, Integer, LargeBinary, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -368,3 +368,122 @@ class QuestionEvent(Base):
     workspace: Mapped[Workspace] = relationship()
     question: Mapped[Question] = relationship(back_populates="events")
     actor: Mapped["User | None"] = relationship(foreign_keys=[actor_user_id])
+
+
+# ---------------------------------------------------------------------------
+# Plan 3 models — SLA engine
+# ---------------------------------------------------------------------------
+
+
+class AlertType(str, enum.Enum):
+    primary = "primary"
+    backup = "backup"
+    escalation = "escalation"
+
+
+class Alert(Base):
+    """Sent DM alert for a question. One row per delivery attempt."""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    alert_type: Mapped[str] = mapped_column(String(32), nullable=False, default=AlertType.primary.value)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="CASCADE",
+            name="fk_alert_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "recipient_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_alert_recipient_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_alert_workspace_id"),
+        CheckConstraint(
+            "alert_type IN ('primary','backup','escalation')",
+            name="ck_alerts_alert_type",
+        ),
+        Index("idx_alerts_question_sent", "question_id", "sent_at"),
+    )
+
+    workspace: Mapped[Workspace] = relationship()
+    question: Mapped[Question] = relationship()
+    recipient: Mapped[User] = relationship(foreign_keys=[recipient_user_id])
+
+
+class Assignment(Base):
+    """Question assignment record — supports re-assignment (unassigned_at is set on removal)."""
+
+    __tablename__ = "assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    assignee_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    assigned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    unassigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="CASCADE",
+            name="fk_assignment_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "assignee_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_assignment_assignee_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "assigned_by_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_assignment_assigned_by_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_assignment_workspace_id"),
+        Index("idx_assignments_question_active", "question_id", postgresql_where=text("unassigned_at IS NULL")),
+    )
+
+    workspace: Mapped[Workspace] = relationship()
+    question: Mapped[Question] = relationship()
+    assignee: Mapped[User] = relationship(foreign_keys=[assignee_user_id])
+    assigned_by: Mapped["User | None"] = relationship(foreign_keys=[assigned_by_user_id])
+
+
+class Snooze(Base):
+    """Snooze record — suppress alerts for a question until snoozed_until."""
+
+    __tablename__ = "snoozes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    snoozed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    snoozed_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            ondelete="CASCADE",
+            name="fk_snooze_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "snoozed_by_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_snooze_user_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_snooze_workspace_id"),
+        Index("idx_snoozes_question_active", "question_id", "snoozed_until"),
+    )
