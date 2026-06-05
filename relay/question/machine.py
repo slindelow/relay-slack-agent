@@ -22,7 +22,15 @@ class InvalidStateTransition(Exception):
 
 
 async def _load_question(session: AsyncSession, question_id: uuid.UUID) -> Question:
-    result = await session.execute(select(Question).where(Question.id == question_id))
+    """Load a question with a row-level write lock.
+
+    SELECT FOR UPDATE prevents concurrent state transitions on the same row —
+    without it, two simultaneous Bolt action handlers can both read state="open"
+    and both succeed in claiming the same question.
+    """
+    result = await session.execute(
+        select(Question).where(Question.id == question_id).with_for_update()
+    )
     question = result.scalar_one_or_none()
     if question is None:
         raise ValueError(f"Question {question_id} not found")
