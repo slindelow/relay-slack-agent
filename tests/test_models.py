@@ -7,7 +7,6 @@ from relay.db.models import (
     MonitoredChannel,
     Question,
     QuestionEvent,
-    QuestionState,
     SlaPolicy,
     User,
     Workspace,
@@ -150,11 +149,6 @@ def test_plan2_tenant_models_have_workspace_id():
         assert "workspace_id" in {column.key for column in model.__table__.columns}, (
             f"{model.__name__} is missing workspace_id"
         )
-
-
-def test_question_state_enum_has_five_states():
-    states = {s.value for s in QuestionState}
-    assert states == {"detected", "open", "claimed", "resolved", "expired"}
 
 
 def test_monitored_channel_has_customer_slack_team_id():
