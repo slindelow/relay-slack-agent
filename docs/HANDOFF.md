@@ -39,6 +39,69 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Claude — 2026-06-05 (Plan 4 — source connectors + embedding pipeline)
+Branch: `claude/plan-3-sla` (Plan 4 code stacked on Plan 3 pending merge)
+Status: All 9 Plan 4 user stories complete. 137 tests pass, 0 failures, 0 warnings.
+
+**What was built:**
+
+**US-001** — pgvector migration `0004_plan4_connectors.py` + ORM models (`SourceConnector`, `SourceDocument`, `KnowledgeChunk`, `RetrievalLog`) — already complete from prior session; `config` JSONB column added to `source_documents` for GitHub citation metadata.
+
+**US-002** — `relay/connectors/` package: abstract `Connector` base class (abc), `get_connector()` lazy registry (avoids circular imports), `ConnectorType` enum in models.
+
+**US-003** — `relay/connectors/embeddings.py`: `embed_chunks()` + `_get_embeddings()`. Supports `voyage-3` (default) and `text-embedding-3-small` via `EMBEDDING_PROVIDER` env var. Idempotent: skips chunks with matching `content_hash` already in DB. Batch size 20.
+
+**US-004** — `relay/connectors/chunking.py`: `chunk_text()` using `tiktoken` `cl100k_base`. Token-aware overlap. Graceful fallback if tiktoken not installed (whitespace tokenizer for tests).
+
+**US-005** — `relay/connectors/google_drive.py`: `GoogleDriveConnector`. Decrypts credentials from `source_connectors.encrypted_credentials`, exports Drive files as plain text, content-hash dedup, chunks+embeds, updates `source_documents`.
+
+**US-006** — `relay/connectors/github.py`: `GitHubConnector`. Syncs issues, PRs, releases, selected markdown files. `citation()` returns `{title, url, status, labels, updated_at, stale}` where stale = last_synced_at > 48h.
+
+**US-007** — `relay/connectors/retrieval.py`: `retrieve()`. Embeds query, runs `ORDER BY embedding <=> CAST(:vec AS vector)` scoped to `workspace_id`, writes `retrieval_logs` row on every call.
+
+**US-008** — `relay/worker/connector_tasks.py`: `sync_connector` + `sync_all_connectors` Celery tasks. Beat schedule: every 6h. `sync_connector` sets `sync_status='error'` on exception without propagating (one failing connector doesn't block others).
+
+**US-009** — `relay/slack/home.py`: `build_home(connector_rows)` — pure block builder, no DB calls. `publish_app_home` handler loads connectors from DB and passes them to builder. Staleness warning if `last_synced_at > 24h`.
+
+**New dependencies added** (pyproject.toml + installed): `tiktoken>=0.7`, `voyageai>=0.3`, `openai>=1.30`, `PyGithub>=2.3`, `google-api-python-client>=2.130`, `google-auth>=2.29`, `google-auth-oauthlib>=1.2`.
+
+**New config fields**: `embedding_provider`, `voyage_api_key`, `openai_api_key`, `google_drive_credentials_json`, `github_token` (all default to `""` so existing tests pass).
+
+Tests run: 137 passed, 0 failures, 19 skipped (integration, need live DB), 1 warning (pre-existing FastAPI httpx deprecation).
+
+Next recommended steps:
+1. Merge PRs #9, #10, #11 in order → clean Plan 3 baseline on main
+2. Open PR for Plan 4 from `claude/plan-3-sla` (or create a dedicated `claude/plan-4-connectors` branch rebased on main after the merges)
+3. Start Plan 5 — convert `tasks/prd-plan5-drafting-approval.md` to active `prd.json`
+
+### Codex — 2026-06-05 (Plan 4 storage foundation)
+Branch: `claude/plan-3-sla` working tree
+Status: Started Plan 4 with the source connector storage layer. Added migration `0004_plan4_connectors.py` and ORM models for `SourceConnector`, `SourceDocument`, `KnowledgeChunk`, and `RetrievalLog`. The migration enables pgvector, creates `vector(1536)` embeddings with an ivfflat cosine index, applies RLS to all four new tenant tables, and uses same-workspace composite FKs for connector/document/chunk ownership.
+
+Also tightened review/test hygiene:
+- Centralized minimal test env defaults in `tests/conftest.py` so Slack app modules import deterministically.
+- Added Plan 3 RLS coverage for `alerts`, `assignments`, and `snoozes`.
+- Updated `/relay help` text to match implemented/planned command status.
+- Updated `docs/CLAUDE_OPERATING_BRIEF.md` with the first-principles review approach requested by the user.
+- Fixed Alembic env config to read the ini section without configparser interpolation before overriding `sqlalchemy.url` from `DATABASE_URL`.
+
+Tests run:
+- `.venv/bin/python -m pytest -q` — 103 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic heads` — single head: `0004_plan4_connectors`.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — offline SQL renders through Plan 4.
+
+Not run:
+- `alembic upgrade head` against a live Postgres+pgvector database; local DB is not configured/reachable in this environment.
+
+Open notes:
+- `tasks/` planning docs are useful as the durable task breakdown; `prd.json` and `progress.txt` duplicate that state and should only be kept if an automation needs them.
+- Plan 3 docs mention assign, but this checkout has only the `Assignment` model, not an assignment Slack action.
+
+Next recommended step:
+1. Run `alembic upgrade head` against a real Postgres database with pgvector available.
+2. Continue Plan 4 US-002: connector interface + lazy registry, then chunking and embedding pipeline.
+
 ### Claude — 2026-06-05 (session 3, code review)
 Branch: `claude/plan-3-sla` → **PR #11 (OPEN, updated)**
 Status: Full structural code review completed on Plans 2 + 3. 34 tests pass, 0 warnings.

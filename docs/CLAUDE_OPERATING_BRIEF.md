@@ -109,7 +109,13 @@ Next recommended step:
 
 ## Engineering Review Standards
 
-Before opening a PR or starting new work, review the current branch for:
+Before opening a PR, starting new work, or responding to a review/problem request, review the current branch with a senior-engineer posture:
+
+- Read the source of truth first (`RELAY_PRD.md`, `docs/HANDOFF.md`, active plan docs, tests, and the changed code) before planning the next implementation step.
+- Prefer the smallest coherent architecture over accumulated helpers. Remove duplication and dead paths when they obscure ownership or state flow.
+- Optimize for operational efficiency: Slack handlers ack first, slow or external work goes to workers, Celery payloads stay JSON-serializable, and DB sessions stay scoped to the mutation they commit.
+- Keep context lean. Use docs and tests as durable memory; avoid scattering scratch notes or repeating long rationale in code.
+- Treat tests as architecture. A passing suite is not enough if new tenant tables, state transitions, or async boundaries are not represented in the harness.
 
 ### Priority order
 1. **Critical correctness**: session lifecycle bugs (detached ORM objects), race conditions (missing SELECT FOR UPDATE on state transitions), missing commits on mutation paths.

@@ -8,7 +8,7 @@ celery = Celery(
     "relay",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["relay.worker.tasks", "relay.sla.poller"],
+    include=["relay.worker.tasks", "relay.sla.poller", "relay.worker.connector_tasks"],
 )
 
 celery.conf.update(
@@ -24,7 +24,11 @@ celery.conf.update(
     beat_schedule={
         "poll-sla-every-60s": {
             "task": "relay.poll_sla",
-            "schedule": 60.0,  # seconds
+            "schedule": 60.0,
+        },
+        "sync-all-connectors-every-6h": {
+            "task": "relay.sync_all_connectors",
+            "schedule": 6 * 60 * 60,  # 6 hours in seconds
         },
     },
 )
