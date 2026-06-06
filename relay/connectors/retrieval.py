@@ -57,6 +57,7 @@ async def retrieve(
         WHERE workspace_id = :wid
         ORDER BY
             embedding <=> CAST(:qvec AS vector),
+            -- Tiebreak: prefer relay_memory chunks (prior approved answers) at equal cosine distance
             CASE WHEN knowledge_entry_id IS NOT NULL THEN 0 ELSE 1 END
         LIMIT :k
         """
@@ -84,13 +85,16 @@ async def retrieve(
 
     chunks: list[RetrievedChunk] = []
     source_ids: list[str] = []
+    incremented_ids: set[uuid.UUID] = set()
 
     for row in rows:
         citation = {}
         if row.knowledge_entry_id is not None:
             entry = entries_by_id.get(row.knowledge_entry_id)
             if entry is not None:
-                entry.reuse_count += 1
+                if row.knowledge_entry_id not in incremented_ids:
+                    entry.reuse_count += 1
+                    incremented_ids.add(row.knowledge_entry_id)
                 citation = {
                     "provider": "relay_memory",
                     "title": entry.title,
