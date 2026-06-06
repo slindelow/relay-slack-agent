@@ -257,7 +257,15 @@ async def handle_send_draft(ack, body, client):
                     draft_accepted=True,
                     sla_met=sla_met,
                 ))
-                await index_approved_response(workspace_id, question.id, draft_id, session)
+                try:
+                    await index_approved_response(
+                        workspace_id=workspace_id,
+                        question_id=question.id,
+                        draft_id=draft_id,
+                        session=session,
+                    )
+                except Exception:
+                    logger.warning("index_approved_response failed; response was sent", exc_info=True)
 
         # Notify CSM
         channel_name = f"<#{channel_id_slack}>" if channel_id_slack else "the customer channel"

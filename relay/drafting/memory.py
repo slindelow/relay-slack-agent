@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 
 from anthropic import AsyncAnthropic
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from relay.config import get_settings
 from relay.connectors.embeddings import embed_chunks
 from relay.db.models import CustomerAccount, Draft, KnowledgeEntry, Question
+
+logger = logging.getLogger(__name__)
 
 _SUMMARY_MODEL = "claude-haiku-4-5-20251001"
 
@@ -99,6 +102,7 @@ async def _summarize_resolution(customer_question: str, internal_answer: str) ->
         parts = [getattr(block, "text", "") for block in response.content]
         summary = " ".join(part.strip() for part in parts if part.strip()).strip()
     except Exception:
+        logger.warning("_summarize_resolution: Haiku call failed, using fallback", exc_info=True)
         summary = ""
 
     if summary:
