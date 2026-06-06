@@ -39,6 +39,26 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 App Home accuracy review)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-006 complete. Full suite green: 202 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Accuracy` section fed by rolling 7-day `FeedbackSignal` rows and total question count.
+- Renders `mark_not_question` correction count, classification accuracy, no-corrections empty state, and an `Export feedback` link button.
+- `publish_app_home` now queries tenant-scoped feedback rows and question counts, and builds the export URL from `APP_BASE_URL`.
+- Added unit coverage for no-correction and populated accuracy states.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_home.py -q` — 10 passed.
+- `.venv/bin/python -m pytest -q` — 202 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 steps:
+1. Add admin feedback export endpoint (US-007).
+2. Add `/relay pulse` account digest (US-008).
+
 ### Codex — 2026-06-06 (Plan 6 App Home impact metrics)
 Branch: `claude/plan-6-feedback-memory`
 Status: US-005 complete. Full suite green: 200 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

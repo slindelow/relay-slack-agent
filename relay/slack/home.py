@@ -161,10 +161,51 @@ def _impact_blocks(impact_rows: list[Any]) -> list[dict]:
     return blocks
 
 
+def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url: str) -> list[dict]:
+    blocks: list[dict] = [
+        {"type": "divider"},
+        {"type": "header", "text": {"type": "plain_text", "text": "Accuracy"}},
+    ]
+
+    corrections = sum(1 for row in feedback_rows if row.correction_action == "mark_not_question")
+    if corrections == 0:
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "_No corrections this week - great accuracy!_"},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Export feedback"},
+                "action_id": "relay_export_feedback",
+                "url": export_url,
+            },
+        })
+        return blocks
+
+    accuracy_denominator = max(total_questions, corrections)
+    accuracy = ((accuracy_denominator - corrections) / accuracy_denominator) * 100
+    blocks.append({
+        "type": "section",
+        "fields": [
+            {"type": "mrkdwn", "text": f"*Corrections this week*\n{corrections}"},
+            {"type": "mrkdwn", "text": f"*Classification accuracy*\n{accuracy:.1f}%"},
+        ],
+        "accessory": {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Export feedback"},
+            "action_id": "relay_export_feedback",
+            "url": export_url,
+        },
+    })
+    return blocks
+
+
 def build_home(
     connector_rows: list[Any],
     questions_needing_draft: list[Any] | None = None,
     impact_rows: list[Any] | None = None,
+    feedback_rows: list[Any] | None = None,
+    total_questions_7d: int = 0,
+    feedback_export_url: str = "/relay/admin/feedback-export",
 ) -> list[dict]:
     """Return the full App Home block list given a list of SourceConnector rows."""
     base_blocks: list[dict] = [
@@ -196,6 +237,7 @@ def build_home(
         + _connector_blocks(connector_rows)
         + _draft_queue_blocks(questions_needing_draft or [])
         + _impact_blocks(impact_rows or [])
+        + _accuracy_blocks(feedback_rows or [], total_questions_7d, feedback_export_url)
     )
 
 
@@ -206,14 +248,20 @@ async def publish_app_home(event, client, body):
     connector_rows: list[Any] = []
     questions_needing_draft: list[Any] = []
     impact_rows: list[Any] = []
+    feedback_rows: list[Any] = []
+    total_questions_7d = 0
+    feedback_export_url = "/relay/admin/feedback-export"
     if team_id:
         try:
             from datetime import timedelta
 
-            from sqlalchemy import select
+            from sqlalchemy import func, select
 
-            from relay.db.models import Draft, ImpactMetric, Question, QuestionState, SourceConnector, Workspace
+            from relay.config import get_settings
+            from relay.db.models import Draft, FeedbackSignal, ImpactMetric, Question, QuestionState, SourceConnector, Workspace
             from relay.db.session import get_session
+
+            feedback_export_url = f"{get_settings().app_base_url}/relay/admin/feedback-export"
 
             async with get_session() as unscoped:
                 ws_result = await unscoped.execute(
@@ -254,10 +302,38 @@ async def publish_app_home(event, client, body):
                         .limit(500)
                     )
                     impact_rows = list(impact_result.scalars())
+
+                    seven_days_ago = datetime.now(UTC) - timedelta(days=7)
+                    feedback_result = await session.execute(
+                        select(FeedbackSignal)
+                        .where(
+                            FeedbackSignal.workspace_id == workspace.id,
+                            FeedbackSignal.created_at >= seven_days_ago,
+                        )
+                        .limit(500)
+                    )
+                    feedback_rows = list(feedback_result.scalars())
+
+                    question_count_result = await session.execute(
+                        select(func.count())
+                        .select_from(Question)
+                        .where(
+                            Question.workspace_id == workspace.id,
+                            Question.created_at >= seven_days_ago,
+                        )
+                    )
+                    total_questions_7d = question_count_result.scalar_one()
         except Exception:
             pass  # Degrade gracefully — Home still renders without data
 
-    blocks = build_home(connector_rows, questions_needing_draft, impact_rows)
+    blocks = build_home(
+        connector_rows,
+        questions_needing_draft,
+        impact_rows,
+        feedback_rows,
+        total_questions_7d,
+        feedback_export_url,
+    )
     await client.views_publish(
         user_id=event["user"],
         view={"type": "home", "blocks": blocks},
