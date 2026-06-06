@@ -8,6 +8,7 @@ from relay.db.models import (
     FeedbackSignal,
     ImpactMetric,
     KnowledgeChunk,
+    KnowledgeEntry,
     Message,
     MonitoredChannel,
     Question,
@@ -46,6 +47,7 @@ def test_all_tenant_tables_have_workspace_id():
         SourceConnector,
         SourceDocument,
         KnowledgeChunk,
+        KnowledgeEntry,
         Draft,
         RetrievalLog,
         FeedbackSignal,
@@ -268,6 +270,24 @@ def test_plan4_models_have_tenant_scoped_constraints():
 def test_knowledge_chunk_uses_pgvector_1536_embedding():
     embedding_type = KnowledgeChunk.__table__.columns["embedding"].type
     assert getattr(embedding_type, "dim", None) == 1536
+
+
+def test_plan6_knowledge_entry_has_resolution_memory_fields():
+    cols = {column.key for column in KnowledgeEntry.__table__.columns}
+    assert {
+        "question_id",
+        "title",
+        "summary",
+        "customer_question",
+        "internal_answer",
+        "source_bundle",
+        "reuse_count",
+    }.issubset(cols)
+    constraint_names = {constraint.name for constraint in KnowledgeEntry.__table__.constraints}
+    assert {
+        "fk_knowledge_entry_question",
+        "uq_knowledge_entry_workspace_id",
+    }.issubset(constraint_names)
 
 
 def test_plan5_draft_model_has_approval_lifecycle_fields():

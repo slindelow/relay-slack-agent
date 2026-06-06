@@ -367,7 +367,7 @@ class Question(Base):
     account: Mapped[CustomerAccount] = relationship(overlaps="channel,message,questions,workspace")
     events: Mapped[list["QuestionEvent"]] = relationship(back_populates="question", cascade="all, delete-orphan")
     drafts: Mapped[list["Draft"]] = relationship(back_populates="question", cascade="all, delete-orphan")
-    knowledge_entries: Mapped[list["KnowledgeEntry"]] = relationship(back_populates="question", foreign_keys="[KnowledgeEntry.workspace_id, KnowledgeEntry.question_id]", overlaps="knowledge_entries,workspace")
+    knowledge_entries: Mapped[list["KnowledgeEntry"]] = relationship(back_populates="question", foreign_keys="[KnowledgeEntry.question_id]", overlaps="knowledge_entries,workspace")
 
 
 class QuestionEvent(Base):
@@ -806,7 +806,11 @@ class KnowledgeEntry(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    question_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("questions.id", ondelete="SET NULL", name="fk_knowledge_entry_question"),
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     customer_question: Mapped[str] = mapped_column(Text, nullable=False)
@@ -816,12 +820,6 @@ class KnowledgeEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        ForeignKeyConstraint(
-            ["workspace_id", "question_id"],
-            ["questions.workspace_id", "questions.id"],
-            ondelete="SET NULL",
-            name="fk_knowledge_entry_question_same_workspace",
-        ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_entry_workspace_id"),
         Index("idx_knowledge_entries_workspace_created", "workspace_id", "created_at"),
     )
@@ -829,4 +827,4 @@ class KnowledgeEntry(Base):
     # overlaps= silences SAWarning from multiple composite FK paths back to workspace_id
     workspace: Mapped[Workspace] = relationship(back_populates="knowledge_entries", overlaps="workspace")
     question: Mapped["Question | None"] = relationship(back_populates="knowledge_entries", foreign_keys=[question_id], overlaps="workspace")
-    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="knowledge_entry", foreign_keys="[KnowledgeChunk.knowledge_entry_id]", overlaps="workspace")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="knowledge_entry", foreign_keys="[KnowledgeChunk.workspace_id, KnowledgeChunk.knowledge_entry_id]", overlaps="chunks,source_document,workspace")
