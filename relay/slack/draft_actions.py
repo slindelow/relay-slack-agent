@@ -171,6 +171,7 @@ async def handle_send_draft(ack, body, client):
             Question, QuestionEvent, SlaPolicy, User,
         )
         from relay.db.session import get_session
+        from relay.drafting.memory import index_approved_response
         from relay.question.machine import resolve_question
 
         async with get_session(workspace_id) as session:
@@ -256,6 +257,7 @@ async def handle_send_draft(ack, body, client):
                     draft_accepted=True,
                     sla_met=sla_met,
                 ))
+                await index_approved_response(workspace_id, question.id, draft_id, session)
 
         # Notify CSM
         channel_name = f"<#{channel_id_slack}>" if channel_id_slack else "the customer channel"

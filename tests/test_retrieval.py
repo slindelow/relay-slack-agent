@@ -120,3 +120,35 @@ async def test_retrieve_rejects_empty_query():
 async def test_retrieve_rejects_invalid_top_k():
     with pytest.raises(ValueError, match="top_k"):
         await retrieve(uuid.uuid4(), "question", AsyncMock(), top_k=0)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_cites_and_counts_relay_memory_chunks():
+    workspace_id = uuid.uuid4()
+    entry_id = uuid.uuid4()
+    chunk_row = _make_chunk_row(workspace_id)
+    chunk_row.source_document_id = None
+    chunk_row.knowledge_entry_id = entry_id
+
+    entry = MagicMock()
+    entry.id = entry_id
+    entry.title = "Acme - SSO setup"
+    entry.summary = "Acme uses the standard SSO setup."
+    entry.created_at = None
+    entry.reuse_count = 2
+
+    query_result = MagicMock()
+    query_result.fetchall.return_value = [chunk_row]
+    entry_result = MagicMock()
+    entry_result.scalars.return_value.all.return_value = [entry]
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.execute = AsyncMock(side_effect=[query_result, entry_result])
+
+    with patch("relay.connectors.retrieval._get_embeddings", new=AsyncMock(return_value=[FAKE_VECTOR])):
+        results = await retrieve(workspace_id, "how do we configure sso?", session)
+
+    assert results[0].citation["provider"] == "relay_memory"
+    assert results[0].citation["title"] == "Acme - SSO setup"
+    assert entry.reuse_count == 3

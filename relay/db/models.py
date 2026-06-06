@@ -606,6 +606,7 @@ class KnowledgeChunk(Base):
             ["workspace_id", "knowledge_entry_id"],
             ["knowledge_entries.workspace_id", "knowledge_entries.id"],
             name="fk_knowledge_chunk_entry_same_workspace",
+            ondelete="SET NULL",
         ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_chunk_workspace_id"),
         UniqueConstraint("workspace_id", "content_hash", name="uq_knowledge_chunk_content_hash"),

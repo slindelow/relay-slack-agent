@@ -39,6 +39,30 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 review + memory/ask slice)
+Branch: `claude/plan-6-feedback-memory`
+Status: Plan 5 is merged on `origin/main`; this branch is Plan 6 work on top of it. Full suite green: 193 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Reviewed Claude's Plan 6 US-001 migration/model work. Fixed the `KnowledgeEntry` ORM metadata to match the migration's tenant-scoped composite FK (`workspace_id`, `question_id`) and restored the migration after a single-column FK drift. Removed composite `ON DELETE SET NULL` on the knowledge-chunk-to-entry FK because `workspace_id` is non-null.
+- Added `relay/drafting/memory.py` with `index_approved_response()`: creates `KnowledgeEntry`, summarizes with Haiku behind a safe fallback, and embeds the approved Q+A as a `KnowledgeChunk` with `knowledge_entry_id`.
+- Wired `relay_send_draft` to index approved/sent responses after `ImpactMetric` write.
+- Extended `embed_chunks()` with a keyword-only `knowledge_entry_id` path and validation that a chunk belongs to either a source document or a memory entry, not both.
+- Updated retrieval so memory chunks cite as `provider="relay_memory"`, increment `KnowledgeEntry.reuse_count`, and win ties against docs at equal semantic distance.
+- Added `/relay ask <question>` handler and top-level `/relay` routing. It resolves workspace by Slack team, runs tenant-scoped retrieval, and returns ephemeral Block Kit source results.
+
+Tests/verification:
+- `.venv/bin/python -m pytest -q` — 193 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic heads` — `0006_plan6_memory (head)`.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — renders through Plan 6.
+
+Next recommended Plan 6 steps:
+1. Build App Home impact metrics section (US-005).
+2. Build App Home accuracy/feedback review (US-006).
+3. Add admin feedback export endpoint (US-007).
+4. Add `/relay pulse` account digest (US-008).
+
 ### Claude — 2026-06-05 (Plans 4 + 5 — connectors, drafting, approval)
 Branch (Plan 4): `claude/plan-4-connectors-v2` → **merged to main as PR #12**
 Branch (Plan 5): `claude/plan-5-clean` → PR #13 open, CI pending

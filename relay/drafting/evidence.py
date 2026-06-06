@@ -52,7 +52,13 @@ def _is_stale(freshness_ts: datetime | None) -> bool:
 
 def _source_priority(provider: str) -> int:
     """Lower number = higher priority."""
-    return {"crm": 0, "github": 1, "google_drive": 2, "knowledge_entry": 3}.get(provider, 9)
+    return {
+        "crm": 0,
+        "relay_memory": 1,
+        "github": 2,
+        "google_drive": 3,
+        "knowledge_entry": 4,
+    }.get(provider, 9)
 
 
 async def assemble_evidence(
