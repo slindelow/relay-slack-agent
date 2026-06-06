@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from sqlalchemy import select
 
@@ -12,18 +13,24 @@ from relay.db.session import get_session
 
 logger = logging.getLogger(__name__)
 
+# Matches "ask" followed by one-or-more spaces (with optional trailing content),
+# OR a bare "ask" at end-of-string — both require a word boundary so "asking" is not touched.
+_ASK_PREFIX_RE = re.compile(r"^ask(?:\s+|$)", re.IGNORECASE)
+
 
 def _parse_ask_query(text: str) -> str:
-    stripped = text.strip()
-    if stripped.lower().startswith("ask"):
-        stripped = stripped[len("ask"):].strip()
-    return stripped
+    # Apply prefix regex before stripping so trailing-space-only input ("ask ") works correctly.
+    return _ASK_PREFIX_RE.sub("", text.lstrip()).strip()
 
 
 def _truncate(text: str, max_chars: int = 150) -> str:
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "..."
+
+
+def _escape_mrkdwn(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
 def _format_result_blocks(chunks: list[RetrievedChunk]) -> list[dict]:
@@ -37,9 +44,13 @@ def _format_result_blocks(chunks: list[RetrievedChunk]) -> list[dict]:
         title = citation.get("title") or "Retrieved source"
         provider = citation.get("provider") or "retrieval"
         url = citation.get("url")
-        title_text = f"<{url}|{title}>" if url else title
+        escaped_title = _escape_mrkdwn(title)
+        if url and url.startswith("https://"):
+            title_text = f"<{url}|{escaped_title}>"
+        else:
+            title_text = escaped_title
         freshness = "stale" if citation.get("stale") else "fresh"
-        excerpt = _truncate(chunk.content.replace("\n", " "))
+        excerpt = _escape_mrkdwn(_truncate(chunk.content.replace("\n", " ")))
 
         blocks.append(
             {

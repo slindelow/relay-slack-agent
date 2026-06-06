@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from relay.commands.ask import _format_result_blocks, _parse_ask_query, handle_ask
+from relay.commands.ask import _escape_mrkdwn, _format_result_blocks, _parse_ask_query, handle_ask
 from relay.connectors.retrieval import RetrievedChunk
 
 
@@ -24,6 +24,11 @@ class _SessionContext:
 def test_parse_ask_query_strips_subcommand():
     assert _parse_ask_query("ask how do I configure SSO?") == "how do I configure SSO?"
     assert _parse_ask_query("how do I configure SSO?") == "how do I configure SSO?"
+
+
+def test_parse_ask_query_word_boundary():
+    # "asking" must NOT be stripped — only bare "ask " prefix
+    assert _parse_ask_query("asking about SSO") == "asking about SSO"
 
 
 def test_format_result_blocks_includes_source_metadata():
@@ -45,11 +50,57 @@ def test_format_result_blocks_includes_source_metadata():
     assert "Enable SSO" in text
 
 
+def test_escape_mrkdwn():
+    assert _escape_mrkdwn("a & b") == "a &amp; b"
+    assert _escape_mrkdwn("<b>") == "&lt;b&gt;"
+    assert _escape_mrkdwn("no special chars") == "no special chars"
+
+
+def test_format_result_blocks_escapes_title_and_excerpt():
+    chunk = RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        source_document_id=uuid.uuid4(),
+        knowledge_entry_id=None,
+        content="Use <b>bold</b> & proper markup.",
+        embedding_model="voyage-3",
+        embedding_dims=1536,
+        citation={"title": "Docs & Guide", "provider": "confluence", "url": "https://example.com", "stale": False},
+    )
+
+    blocks = _format_result_blocks([chunk])
+
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+    assert "Docs &amp; Guide" in text
+    assert "&lt;b&gt;" in text
+    # Raw unescaped chars must not appear inside mrkdwn
+    assert "*Docs & Guide*" not in text
+
+
+def test_format_result_blocks_non_https_url_falls_back_to_text():
+    chunk = RetrievedChunk(
+        chunk_id=uuid.uuid4(),
+        source_document_id=uuid.uuid4(),
+        knowledge_entry_id=None,
+        content="Some content.",
+        embedding_model="voyage-3",
+        embedding_dims=1536,
+        citation={"title": "Risky Doc", "provider": "confluence", "url": "javascript:alert(1)", "stale": False},
+    )
+
+    blocks = _format_result_blocks([chunk])
+
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+    # URL must not be embedded; title should still appear as plain text
+    assert "javascript:" not in text
+    assert "Risky Doc" in text
+
+
 @pytest.mark.asyncio
 async def test_handle_ask_empty_query_returns_usage():
     ack = AsyncMock()
     respond = AsyncMock()
 
+    # Bare "ask" with no arguments should yield empty query
     await handle_ask(ack, respond, {"text": "ask", "team_id": "T123"})
 
     ack.assert_awaited_once()
