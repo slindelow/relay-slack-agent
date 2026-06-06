@@ -39,6 +39,25 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 feedback export endpoint)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-007 complete. Full suite green: 204 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `GET /relay/admin/feedback-export` returning workspace-scoped feedback signals as `application/x-ndjson`.
+- Authenticates `Authorization: Bearer <token>` through Slack `auth.test`, resolves workspace by `team_id`, and requires local `User.relay_role == "admin"`.
+- Supports `?days=` with max 90-day clamp and sets an attachment filename.
+- Added unit tests for non-admin 403 and admin JSONL output.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_feedback_export.py tests/test_api.py -q` — 3 passed, 1 warning.
+- `.venv/bin/python -m pytest -q` — 204 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 step:
+1. Add `/relay pulse` account digest (US-008).
+
 ### Codex — 2026-06-06 (Plan 6 App Home accuracy review)
 Branch: `claude/plan-6-feedback-memory`
 Status: US-006 complete. Full suite green: 202 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

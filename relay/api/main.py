@@ -1,13 +1,20 @@
 """FastAPI app mounting Slack Bolt."""
 
+import json
 import logging
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+import httpx
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
+from sqlalchemy import select
 
 from relay.config import get_settings
+from relay.db.models import FeedbackSignal, User, Workspace
+from relay.db.session import get_session
 from relay.integrations.hubspot import (
     HubSpotOAuthError,
     build_hubspot_state,
@@ -42,6 +49,95 @@ async def slack_install(req: Request):
 @api.get("/slack/oauth_redirect")
 async def slack_oauth_redirect(req: Request):
     return await handler.handle(req)
+
+
+async def _slack_auth_test(token: str) -> dict:
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.post(
+            "https://slack.com/api/auth.test",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    data = response.json()
+    if response.status_code >= 400 or not data.get("ok"):
+        raise HTTPException(status_code=401, detail="invalid Slack token")
+    return data
+
+
+def _feedback_signal_to_json(row: FeedbackSignal) -> str:
+    payload = {
+        "workspace_id": str(row.workspace_id),
+        "question_id": str(row.question_id) if row.question_id else None,
+        "draft_id": str(row.draft_id) if row.draft_id else None,
+        "message_id": str(row.message_id) if row.message_id else None,
+        "correction_action": row.correction_action,
+        "original_label": row.original_label,
+        "corrected_label": row.corrected_label,
+        "original_confidence": row.original_confidence,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+    return json.dumps(payload, separators=(",", ":")) + "\n"
+
+
+def _jsonl_response(rows: Iterable[FeedbackSignal]) -> Iterable[str]:
+    for row in rows:
+        yield _feedback_signal_to_json(row)
+
+
+@api.get("/relay/admin/feedback-export")
+async def feedback_export(
+    authorization: str = Header(default=""),
+    days: int = Query(default=7, ge=1),
+):
+    """Export workspace-scoped feedback signals as JSONL for classifier review."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    auth = await _slack_auth_test(token)
+    slack_team_id = auth.get("team_id")
+    slack_user_id = auth.get("user_id")
+    if not slack_team_id or not slack_user_id:
+        raise HTTPException(status_code=401, detail="Slack auth.test did not return team/user")
+
+    async with get_session() as session:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    clamped_days = min(days, 90)
+    since = datetime.now(UTC) - timedelta(days=clamped_days)
+
+    async with get_session(workspace.id) as session:
+        user_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == slack_user_id,
+            )
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None or user.relay_role != "admin":
+            raise HTTPException(status_code=403, detail="admin role required")
+
+        feedback_result = await session.execute(
+            select(FeedbackSignal)
+            .where(
+                FeedbackSignal.workspace_id == workspace.id,
+                FeedbackSignal.created_at >= since,
+            )
+            .order_by(FeedbackSignal.created_at.asc())
+        )
+        rows = list(feedback_result.scalars())
+
+    filename_date = datetime.now(UTC).date().isoformat()
+    return StreamingResponse(
+        _jsonl_response(rows),
+        media_type="application/x-ndjson",
+        headers={"Content-Disposition": f"attachment; filename=relay-feedback-{filename_date}.jsonl"},
+    )
 
 
 @api.get("/hubspot/install")

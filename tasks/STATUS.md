@@ -20,8 +20,7 @@
 
 ## Immediate Next Steps
 
-1. Add admin feedback export (US-007).
-2. Add `/relay pulse` account digest (US-008).
+1. Add `/relay pulse` account digest (US-008).
 
 ---
 
@@ -66,4 +65,5 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-004: Added `/relay ask <question>` routing and ephemeral source results.
 - ✅ US-005: Added App Home impact metrics section with 30-day SLA met rate, draft accepted rate, median time to send, and total handled count.
 - ✅ US-006: Added App Home accuracy section with 7-day correction count, classification accuracy, and feedback export link.
-- ⏭️ Next: US-007 admin feedback export endpoint.
+- ✅ US-007: Added admin feedback export endpoint with Slack auth.test, admin role check, JSONL streaming, and day-window clamp.
+- ⏭️ Next: US-008 `/relay pulse` account digest.
