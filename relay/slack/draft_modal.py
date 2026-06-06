@@ -18,11 +18,6 @@ def _confidence_badge(confidence: float | None) -> str:
     return ":red_circle: low confidence"
 
 
-def _renewal_proximity(renewal_date_iso: str | None) -> str:
-    """Thin wrapper kept for backwards compatibility; delegates to renewal_proximity."""
-    return renewal_proximity(renewal_date_iso)
-
-
 def build_draft_modal(
     draft_row: Any,
     question_row: Any,
@@ -49,7 +44,7 @@ def build_draft_modal(
         arr = f"${float(account_row.arr):,.0f}" if account_row.arr else "N/A"
         bundle = draft_row.evidence_bundle or {}
         ctx = bundle.get("account_context", {})
-        renewal_str = _renewal_proximity(ctx.get("renewal_date"))
+        renewal_str = renewal_proximity(ctx.get("renewal_date"))
         blocks.append({
             "type": "section",
             "text": {
