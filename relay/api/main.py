@@ -2,13 +2,12 @@
 
 import json
 import logging
-from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from sqlalchemy import select
 
@@ -52,20 +51,28 @@ async def slack_oauth_redirect(req: Request):
 
 
 async def _slack_auth_test(token: str) -> dict:
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.post(
-            "https://slack.com/api/auth.test",
-            headers={"Authorization": f"Bearer {token}"},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                "https://slack.com/api/auth.test",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        response.raise_for_status()
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=503, detail="Slack API unavailable")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Slack API unavailable")
     data = response.json()
-    if response.status_code >= 400 or not data.get("ok"):
-        raise HTTPException(status_code=401, detail="invalid Slack token")
+    if not data.get("ok"):
+        raise HTTPException(status_code=401, detail="Invalid Slack token")
     return data
 
 
 def _feedback_signal_to_json(row: FeedbackSignal) -> str:
     payload = {
+        "id": str(row.id),
         "workspace_id": str(row.workspace_id),
+        "actor_user_id": row.actor_user_id,
         "question_id": str(row.question_id) if row.question_id else None,
         "draft_id": str(row.draft_id) if row.draft_id else None,
         "message_id": str(row.message_id) if row.message_id else None,
@@ -79,15 +86,10 @@ def _feedback_signal_to_json(row: FeedbackSignal) -> str:
     return json.dumps(payload, separators=(",", ":")) + "\n"
 
 
-def _jsonl_response(rows: Iterable[FeedbackSignal]) -> Iterable[str]:
-    for row in rows:
-        yield _feedback_signal_to_json(row)
-
-
 @api.get("/relay/admin/feedback-export")
 async def feedback_export(
     authorization: str = Header(default=""),
-    days: int = Query(default=7, ge=1),
+    days: int = Query(default=7, ge=1, le=90),
 ):
     """Export workspace-scoped feedback signals as JSONL for classifier review."""
     if not authorization.startswith("Bearer "):
@@ -108,8 +110,7 @@ async def feedback_export(
     if workspace is None:
         raise HTTPException(status_code=404, detail="workspace not found")
 
-    clamped_days = min(days, 90)
-    since = datetime.now(UTC) - timedelta(days=clamped_days)
+    since = datetime.now(UTC) - timedelta(days=days)
 
     async with get_session(workspace.id) as session:
         user_result = await session.execute(
@@ -132,11 +133,14 @@ async def feedback_export(
         )
         rows = list(feedback_result.scalars())
 
-    filename_date = datetime.now(UTC).date().isoformat()
-    return StreamingResponse(
-        _jsonl_response(rows),
+    date_str = datetime.now(UTC).date().isoformat()
+    content = "\n".join(r.rstrip("\n") for r in (_feedback_signal_to_json(r) for r in rows))
+    if content:
+        content += "\n"
+    return Response(
+        content=content,
         media_type="application/x-ndjson",
-        headers={"Content-Disposition": f"attachment; filename=relay-feedback-{filename_date}.jsonl"},
+        headers={"Content-Disposition": f'attachment; filename="relay-feedback-{date_str}.jsonl"'},
     )
 
 
