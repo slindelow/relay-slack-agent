@@ -5,7 +5,8 @@ import uuid
 from datetime import date, timedelta
 from types import SimpleNamespace
 
-from relay.slack.draft_modal import _confidence_badge, _renewal_proximity, build_draft_modal
+from relay.slack.draft_modal import _confidence_badge, build_draft_modal
+from relay.utils.formatting import renewal_proximity as _renewal_proximity
 
 
 def _draft(confidence=0.9, sources=None, customer_draft="Enable SSO under Settings > Security."):

@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from relay.db.models import CustomerAccount, ImpactMetric, Question, QuestionState, User, Workspace
 from relay.db.session import get_session
-from relay.slack.draft_modal import _renewal_proximity
+from relay.utils.formatting import renewal_proximity
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +65,7 @@ def _sla_rate(metrics: list[ImpactMetric]) -> str:
 
 def _renewal_text(account: CustomerAccount) -> str:
     renewal = getattr(account, "renewal_date", None)
-    if isinstance(renewal, date):
-        return _renewal_proximity(renewal.isoformat())
-    return _renewal_proximity(renewal)
+    return renewal_proximity(renewal)
 
 
 def _summary_blocks(pulses: list[AccountPulse]) -> list[dict]:
