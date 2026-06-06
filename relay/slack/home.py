@@ -168,16 +168,20 @@ def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url:
     ]
 
     corrections = sum(1 for row in feedback_rows if row.correction_action == "mark_not_question")
+
+    button: dict[str, Any] = {
+        "type": "button",
+        "text": {"type": "plain_text", "text": "Export feedback"},
+        "action_id": "relay_export_feedback",
+    }
+    if export_url.startswith("https://") or export_url.startswith("http://"):
+        button["url"] = export_url
+
     if corrections == 0:
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn", "text": "No corrections this week — great accuracy!"},
-            "accessory": {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "Export feedback"},
-                "action_id": "relay_export_feedback",
-                "url": export_url,
-            },
+            "accessory": button,
         })
         return blocks
 
@@ -192,12 +196,7 @@ def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url:
             {"type": "mrkdwn", "text": f"*Corrections this week*\n{corrections}"},
             {"type": "mrkdwn", "text": f"*Classification accuracy*\n{accuracy_pct}"},
         ],
-        "accessory": {
-            "type": "button",
-            "text": {"type": "plain_text", "text": "Export feedback"},
-            "action_id": "relay_export_feedback",
-            "url": export_url,
-        },
+        "accessory": button,
     })
     return blocks
 
@@ -208,7 +207,7 @@ def build_home(
     impact_rows: list[Any] | None = None,
     feedback_rows: list[Any] | None = None,
     total_questions_7d: int = 0,
-    feedback_export_url: str = "/relay/admin/feedback-export",
+    feedback_export_url: str = "",
 ) -> list[dict]:
     """Return the full App Home block list given a list of SourceConnector rows."""
     base_blocks: list[dict] = [
@@ -253,7 +252,7 @@ async def publish_app_home(event, client, body):
     impact_rows: list[Any] = []
     feedback_rows: list[Any] = []
     total_questions_7d = 0
-    feedback_export_url = "/relay/admin/feedback-export"
+    feedback_export_url = ""
     if team_id:
         try:
             from datetime import timedelta
@@ -313,6 +312,7 @@ async def publish_app_home(event, client, body):
                         .where(
                             FeedbackSignal.workspace_id == workspace.id,
                             FeedbackSignal.created_at >= seven_days_ago,
+                            FeedbackSignal.correction_action == "mark_not_question",
                         )
                         .limit(500)
                     )
