@@ -133,7 +133,7 @@ def _impact_blocks(impact_rows: list[Any]) -> list[dict]:
     if not impact_rows:
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "_No data yet - stats appear after your first sent response._"},
+            "text": {"type": "mrkdwn", "text": "No data yet — stats appear after your first sent response."},
         })
         return blocks
 
