@@ -171,7 +171,7 @@ def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url:
     if corrections == 0:
         blocks.append({
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "_No corrections this week - great accuracy!_"},
+            "text": {"type": "mrkdwn", "text": "No corrections this week — great accuracy!"},
             "accessory": {
                 "type": "button",
                 "text": {"type": "plain_text", "text": "Export feedback"},
@@ -181,13 +181,16 @@ def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url:
         })
         return blocks
 
-    accuracy_denominator = max(total_questions, corrections)
-    accuracy = ((accuracy_denominator - corrections) / accuracy_denominator) * 100
+    if total_questions == 0:
+        accuracy_pct = "n/a"
+    else:
+        accuracy = max(0.0, (total_questions - corrections) / total_questions * 100)
+        accuracy_pct = f"{accuracy:.1f}%"
     blocks.append({
         "type": "section",
         "fields": [
             {"type": "mrkdwn", "text": f"*Corrections this week*\n{corrections}"},
-            {"type": "mrkdwn", "text": f"*Classification accuracy*\n{accuracy:.1f}%"},
+            {"type": "mrkdwn", "text": f"*Classification accuracy*\n{accuracy_pct}"},
         ],
         "accessory": {
             "type": "button",
