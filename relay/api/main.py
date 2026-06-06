@@ -72,7 +72,7 @@ def _feedback_signal_to_json(row: FeedbackSignal) -> str:
     payload = {
         "id": str(row.id),
         "workspace_id": str(row.workspace_id),
-        "actor_user_id": row.actor_user_id,
+        "actor_user_id": str(row.actor_user_id) if row.actor_user_id else None,
         "question_id": str(row.question_id) if row.question_id else None,
         "draft_id": str(row.draft_id) if row.draft_id else None,
         "message_id": str(row.message_id) if row.message_id else None,

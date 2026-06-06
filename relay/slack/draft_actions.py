@@ -258,6 +258,7 @@ async def handle_send_draft(ack, body, client):
                     sla_met=sla_met,
                 ))
                 try:
+                    draft.customer_draft = response_body  # persist the final approved text
                     await index_approved_response(
                         workspace_id=workspace_id,
                         question_id=question.id,
@@ -417,3 +418,13 @@ async def handle_regenerate_draft(ack, body, client):
 
     except Exception:
         logger.exception("relay_regenerate_draft: error for draft %s", draft_id_str)
+
+
+# ---------------------------------------------------------------------------
+# Export feedback — no-op ack (URL handles the click; ack prevents Bolt warning)
+# ---------------------------------------------------------------------------
+
+
+@app.action("relay_export_feedback")
+async def handle_export_feedback_action(ack):
+    await ack()
