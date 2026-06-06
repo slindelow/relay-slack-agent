@@ -299,6 +299,7 @@ async def publish_app_home(event, client, body):
                             ImpactMetric.workspace_id == workspace.id,
                             ImpactMetric.created_at >= datetime.now(UTC) - timedelta(days=30),
                         )
+                        .order_by(ImpactMetric.created_at.desc())
                         .limit(500)
                     )
                     impact_rows = list(impact_result.scalars())
