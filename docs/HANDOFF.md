@@ -39,6 +39,27 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 App Home impact metrics)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-005 complete. Full suite green: 200 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Impact` section fed by rolling 30-day `ImpactMetric` rows.
+- `build_home()` now accepts `impact_rows` and renders SLA met rate, draft accepted rate, median time to send, and total questions handled.
+- `publish_app_home` queries tenant-scoped impact metrics for the installed Slack workspace and degrades gracefully if unavailable.
+- Added unit coverage for empty-state and populated impact metrics rendering.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_home.py -q` — 8 passed.
+- `.venv/bin/python -m pytest -q` — 200 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 steps:
+1. Build App Home accuracy/feedback review (US-006).
+2. Add admin feedback export endpoint (US-007).
+3. Add `/relay pulse` account digest (US-008).
+
 ### Codex — 2026-06-06 (Plan 6 review + memory/ask slice)
 Branch: `claude/plan-6-feedback-memory`
 Status: Plan 5 is merged on `origin/main`; this branch is Plan 6 work on top of it. Full suite green: 193 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

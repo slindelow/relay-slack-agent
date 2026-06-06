@@ -73,3 +73,38 @@ def test_connected_sources_header_present():
     blocks = build_home([])
     headers = [b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "header"]
     assert any("Connected Sources" in h for h in headers)
+
+
+def _make_impact(sla_met, draft_accepted, time_to_send_seconds):
+    row = MagicMock()
+    row.sla_met = sla_met
+    row.draft_accepted = draft_accepted
+    row.time_to_send_seconds = time_to_send_seconds
+    return row
+
+
+def test_build_home_impact_no_data_message():
+    blocks = build_home([], impact_rows=[])
+    texts = [b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "section"]
+    assert any("No data yet" in text for text in texts)
+
+
+def test_build_home_impact_metrics_section():
+    impact_rows = [
+        _make_impact(True, True, 272),
+        _make_impact(True, False, 60),
+        _make_impact(False, True, 120),
+    ]
+
+    blocks = build_home([], impact_rows=impact_rows)
+
+    fields = [
+        field["text"]
+        for block in blocks
+        for field in block.get("fields", [])
+    ]
+    joined = "\n".join(fields)
+    assert "66.7%" in joined
+    assert "Draft accepted rate" in joined
+    assert "2m 0s" in joined
+    assert "Questions handled" in joined

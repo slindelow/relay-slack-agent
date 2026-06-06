@@ -20,9 +20,9 @@
 
 ## Immediate Next Steps
 
-1. Continue Plan 6 App Home impact metrics (US-005).
-2. Add App Home accuracy/feedback review (US-006).
-3. Add admin feedback export (US-007), then `/relay pulse` (US-008).
+1. Add App Home accuracy/feedback review (US-006).
+2. Add admin feedback export (US-007).
+3. Add `/relay pulse` account digest (US-008).
 
 ---
 
@@ -65,4 +65,5 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-002: Added `index_approved_response()` and wired sent drafts into resolution memory indexing.
 - ✅ US-003: Retrieval cites memory chunks as `relay_memory` and increments `reuse_count`.
 - ✅ US-004: Added `/relay ask <question>` routing and ephemeral source results.
-- ⏭️ Next: US-005 App Home impact metrics.
+- ✅ US-005: Added App Home impact metrics section with 30-day SLA met rate, draft accepted rate, median time to send, and total handled count.
+- ⏭️ Next: US-006 App Home accuracy and feedback review.
