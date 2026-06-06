@@ -39,6 +39,27 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 `/relay pulse`)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-008 complete. Plan 6 implementation is complete on this branch. Full suite green: 209 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `/relay pulse [account-name]` handler with no-arg top account summary and named-account detailed pulse.
+- Summary shows top accounts by open question count with tier, ARR, renewal proximity, and owner/backup context.
+- Detail view shows open questions, 30-day SLA met rate, last resolved question date, renewal, tier, ARR, and backup owner when the primary owner is OOO.
+- Registered pulse routing in `/relay` and updated help copy.
+- Added unit coverage for summary blocks, detail blocks, not-found behavior, and handler summary response.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_pulse_command.py -q` — 5 passed.
+- `.venv/bin/python -m pytest -q` — 209 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended step:
+1. Do a final Plan 6 review pass, then open/merge PR for `claude/plan-6-feedback-memory`.
+2. Start Plan 7 marketplace readiness after Plan 6 lands.
+
 ### Codex — 2026-06-06 (Plan 6 feedback export endpoint)
 Branch: `claude/plan-6-feedback-memory`
 Status: US-007 complete. Full suite green: 204 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

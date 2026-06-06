@@ -13,14 +13,15 @@
 | 3 — SLA Engine + Alerts | 60s poller, DM alert cards, claim/snooze/assign/mark-not-question | ✅ Complete (pending merge) | PR #11 |
 | 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
-| 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | 🟡 In progress — US-001/002/003/004 advanced | Local branch `claude/plan-6-feedback-memory` |
+| 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
 | 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ❌ Not started | — |
 
 ---
 
 ## Immediate Next Steps
 
-1. Add `/relay pulse` account digest (US-008).
+1. Final review Plan 6 branch and open/merge PR.
+2. Start Plan 7 Marketplace Readiness.
 
 ---
 
@@ -66,4 +67,5 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-005: Added App Home impact metrics section with 30-day SLA met rate, draft accepted rate, median time to send, and total handled count.
 - ✅ US-006: Added App Home accuracy section with 7-day correction count, classification accuracy, and feedback export link.
 - ✅ US-007: Added admin feedback export endpoint with Slack auth.test, admin role check, JSONL streaming, and day-window clamp.
-- ⏭️ Next: US-008 `/relay pulse` account digest.
+- ✅ US-008: Added `/relay pulse [account]` account digest with summary and detailed Block Kit responses.
+- ⏭️ Next: Plan 6 final review, then Plan 7 marketplace readiness.

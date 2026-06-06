@@ -13,6 +13,7 @@ app = AsyncApp(
 
 from relay.commands import help as _help  # noqa: E402,F401
 from relay.commands import ask as _ask  # noqa: E402,F401
+from relay.commands import pulse as _pulse  # noqa: E402,F401
 from relay.commands import register as _register  # noqa: E402,F401
 from relay.slack import home as _home  # noqa: E402,F401
 from relay.slack import events as _events  # noqa: E402,F401

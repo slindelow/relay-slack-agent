@@ -1,6 +1,7 @@
 """Handler for /relay help (and top-level /relay subcommand routing)."""
 
 from relay.commands.ask import handle_ask
+from relay.commands.pulse import handle_pulse
 from relay.commands.register import handle_register
 from relay.slack.app import app
 
@@ -26,6 +27,13 @@ async def relay_help(ack, respond, command):
         await handle_ask(ack=_noop_ack, respond=respond, command=command)
         return
 
+    if subcommand == "pulse":
+        async def _noop_ack():
+            pass
+
+        await handle_pulse(ack=_noop_ack, respond=respond, command=command)
+        return
+
     if text and subcommand != "help":
         await respond(
             response_type="ephemeral",
@@ -46,7 +54,7 @@ async def relay_help(ack, respond, command):
                         "• `/relay register #channel account tier @owner` - Register a customer channel\n"
                         "• `/relay open` - Planned in Plan 3\n"
                         "• `/relay ask [question]` - Search connected knowledge sources\n"
-                        "• `/relay pulse` - Planned in Plan 6"
+                        "• `/relay pulse [account]` - Show account health digest"
                     ),
                 },
             },
