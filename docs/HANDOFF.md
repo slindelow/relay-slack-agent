@@ -39,6 +39,28 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 workspace deletion functional test)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: Remaining US-002 verification added. Full suite green locally: 231 passed, 20 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Updated `delete_workspace_data` to run the deletion transaction with workspace RLS context.
+- Added a Postgres-backed full-data-tree deletion test covering workspace settings, SLA policy, user, token, CRM connection, source connector, account, monitored channel, message, question, question event, alert, assignment, snooze, draft, source document, connector/memory chunks, retrieval log, feedback signal, impact metric, classification feedback, deletion job, workspace deletion, and final audit entry.
+- The integration test uses the existing `engine` fixture and skips locally when Postgres is unavailable; CI now has Postgres from the existing workflow service.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_deletion_tasks.py -q` — 2 passed, 1 skipped locally because Postgres is unavailable.
+- `.venv/bin/python -m pytest tests/test_delete_command.py tests/test_slack_events.py -q` — 3 passed.
+- `.venv/bin/python -m pytest -q` — 231 passed, 20 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Local caveat:
+- Live deletion verification did not execute on this machine because Postgres is not listening on `localhost:5432` and Docker is not installed. The test is present and should run in CI's Postgres service.
+
+Next recommended step:
+1. Push `codex/plan-7-marketplace-readiness` and open a Plan 7 PR after reviewing the stacked branch base.
+
 ### Codex — 2026-06-07 (Plan 7 Celery health in CI)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-008 complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
