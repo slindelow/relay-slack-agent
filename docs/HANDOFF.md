@@ -6,7 +6,7 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 ## Current Status
 Repo live at `https://github.com/slindelow/relay-slack-agent`.
 
-Merged to `main` (Plans 1 + 2 foundation):
+Merged to `main` (Plans 1–5):
 - PR #1: collaboration docs
 - PR #2: PRD v2.0 + Plan 1 details
 - PR #3: Plan 1 foundation scaffold (classifier, DB, crypto, Slack, Celery)
@@ -16,6 +16,10 @@ Merged to `main` (Plans 1 + 2 foundation):
 - PR #8: HANDOFF update
 
 Open PRs (pending merge, in dependency order):
+- PR #14 (`claude/plan-6-feedback-memory`): knowledge entries, /relay ask+pulse, App Home metrics, feedback export, relay_memory retrieval — 212 tests
+- PR #15 (`claude/plan-7-marketplace-readiness`): KMS envelope encryption, workspace/user deletion, legal pages, reviewer sandbox, Sentry monitoring — 233 tests (stacked on Plan 6)
+
+Previously merged (Plans 1–5):
 - PR #9 (`claude/plan-2-question-machine`): 5-state question machine, 10 unit tests
 - PR #10 (`claude/plan-2-event-ingestion`): Bolt message handler + full Celery classify worker, 5 unit tests
 - PR #11 (`claude/plan-3-sla`): Full SLA engine — see below
@@ -143,6 +147,36 @@ Next recommended Plan 6 steps:
 2. Build App Home accuracy/feedback review (US-006).
 3. Add admin feedback export endpoint (US-007).
 4. Add `/relay pulse` account digest (US-008).
+
+### Claude — 2026-06-07 (Plans 6 + 7 — feedback memory, marketplace readiness)
+
+**Plan 6** — Branch `claude/plan-6-feedback-memory` → **PR #14 open, CI pending**
+- US-001: migration 0006 — `knowledge_entries` table + RLS + indexes
+- US-002: `relay/drafting/memory.py` — `index_approved_response()`, Haiku summary, embed chunk; wired into `relay_send_draft`
+- US-003: `relay/connectors/retrieval.py` — `relay_memory` citation provider, `reuse_count` increment
+- US-004: `relay/commands/ask.py` — `/relay ask <query>` ephemeral Block Kit
+- US-005: `relay/slack/home.py` — `_impact_blocks()` (30d SLA/acceptance/time-to-send)
+- US-006: `relay/slack/home.py` — `_accuracy_blocks()` (7d correction rate + export button)
+- US-007: `relay/api/main.py` — `GET /relay/admin/feedback-export` JSONL endpoint
+- US-008: `relay/commands/pulse.py` — `/relay pulse [account]`
+- Extra: `relay/utils/formatting.py` shared `renewal_proximity()`
+- Tests: 212 passed, 19 skipped
+
+**Plan 7** — Branch `claude/plan-7-marketplace-readiness` → **PR #15 open** (stacked on Plan 6)
+- US-001: `relay/crypto.py` — `KMSProvider` ABC, `LocalKMSProvider`, DEK functions; migration 0007 (`wrapped_dek`/`kms_key_id` on workspaces)
+- US-002: `relay/commands/delete.py` + `relay/worker/deletion_tasks.py` — `/relay delete-workspace-data` modal + Celery cascade delete; `app_uninstalled` event handler; `workspace_deletion_jobs` table
+- US-003: `relay/slack/settings.py` — `relay_disconnect_connector` action (purge chunks + documents, set `disconnected_at`)
+- US-004: `relay/api/main.py` — `DELETE /relay/admin/users/{id}/erase` GDPR endpoint
+- US-005: `relay/api/legal.py` — `/privacy`, `/terms`, `/sub-processors` HTML pages
+- US-006: `docs/marketplace/scope-justification.md` — scope justification for 7 OAuth scopes
+- US-007: `scripts/seed_reviewer_sandbox.py` (idempotent) + `docs/marketplace/reviewer-walkthrough.md`
+- US-008: `sentry-sdk[fastapi,celery]` + Sentry init in app + worker; `/health` extended with DB+Redis checks
+- Tests: 233 passed, 19 skipped
+
+**Next for next agent:**
+1. Wait for PR #14 CI (should pass — pgvector fix is in main now), merge it
+2. Rebase `claude/plan-7-marketplace-readiness` onto new main, merge PR #15
+3. RELAY is functionally complete and marketplace-ready after both merges
 
 ### Claude — 2026-06-05 (Plans 4 + 5 — connectors, drafting, approval)
 Branch (Plan 4): `claude/plan-4-connectors-v2` → **merged to main as PR #12**
