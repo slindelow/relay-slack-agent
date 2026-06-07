@@ -81,26 +81,38 @@ async def handle_claim_question(ack, body, respond, logger=logger):
         await respond(text="⚠️ Could not parse question ID.", response_type="ephemeral")
         return
 
+    team_id = body.get("team", {}).get("id", "")
     actor_slack_id = body.get("user", {}).get("id", "")
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Question, QuestionState
+        from relay.db.models import Question, QuestionState, Workspace
         from relay.db.session import get_session
 
+        # Step 1: resolve workspace from Slack team_id (unscoped — Workspace table has no RLS)
         async with get_session() as unscoped:
-            q_result = await unscoped.execute(
+            ws_result = await unscoped.execute(
+                select(Workspace).where(Workspace.slack_team_id == team_id)
+            )
+            workspace = ws_result.scalar_one_or_none()
+
+        if workspace is None:
+            await respond(text="⚠️ Workspace not found.", response_type="ephemeral")
+            return
+
+        workspace_id = workspace.id
+
+        # Step 2: all further queries use the RLS-enforced scoped session
+        async with get_session(workspace_id) as session:
+            q_result = await session.execute(
                 select(Question).where(Question.id == question_id)
             )
             question = q_result.scalar_one_or_none()
 
-        if question is None:
-            await respond(text="⚠️ Question not found.", response_type="ephemeral")
-            return
+            if question is None:
+                await respond(text="⚠️ Question not found.", response_type="ephemeral")
+                return
 
-        workspace_id = question.workspace_id
-
-        async with get_session(workspace_id) as session:
             actor = await _get_or_create_user(session, workspace_id, actor_slack_id)
 
             from relay.question.machine import claim_question, InvalidStateTransition
@@ -136,27 +148,39 @@ async def _handle_snooze(ack, body, respond, hours: int, logger=logger):
         await respond(text="⚠️ Could not parse question ID.", response_type="ephemeral")
         return
 
+    team_id = body.get("team", {}).get("id", "")
     actor_slack_id = body.get("user", {}).get("id", "")
     snoozed_until = datetime.now(UTC) + timedelta(hours=hours)
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Question, Snooze
+        from relay.db.models import Question, Snooze, Workspace
         from relay.db.session import get_session
 
+        # Step 1: resolve workspace from Slack team_id (unscoped — Workspace table has no RLS)
         async with get_session() as unscoped:
-            q_result = await unscoped.execute(
+            ws_result = await unscoped.execute(
+                select(Workspace).where(Workspace.slack_team_id == team_id)
+            )
+            workspace = ws_result.scalar_one_or_none()
+
+        if workspace is None:
+            await respond(text="⚠️ Workspace not found.", response_type="ephemeral")
+            return
+
+        workspace_id = workspace.id
+
+        # Step 2: all further queries use the RLS-enforced scoped session
+        async with get_session(workspace_id) as session:
+            q_result = await session.execute(
                 select(Question).where(Question.id == question_id)
             )
             question = q_result.scalar_one_or_none()
 
-        if question is None:
-            await respond(text="⚠️ Question not found.", response_type="ephemeral")
-            return
+            if question is None:
+                await respond(text="⚠️ Question not found.", response_type="ephemeral")
+                return
 
-        workspace_id = question.workspace_id
-
-        async with get_session(workspace_id) as session:
             actor = await _get_or_create_user(session, workspace_id, actor_slack_id)
             session.add(Snooze(
                 workspace_id=workspace_id,
@@ -209,26 +233,38 @@ async def handle_mark_not_question(ack, body, respond, logger=logger):
         await respond(text="⚠️ Could not parse question ID.", response_type="ephemeral")
         return
 
+    team_id = body.get("team", {}).get("id", "")
     actor_slack_id = body.get("user", {}).get("id", "")
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Question
+        from relay.db.models import Question, Workspace
         from relay.db.session import get_session
 
+        # Step 1: resolve workspace from Slack team_id (unscoped — Workspace table has no RLS)
         async with get_session() as unscoped:
-            q_result = await unscoped.execute(
+            ws_result = await unscoped.execute(
+                select(Workspace).where(Workspace.slack_team_id == team_id)
+            )
+            workspace = ws_result.scalar_one_or_none()
+
+        if workspace is None:
+            await respond(text="⚠️ Workspace not found.", response_type="ephemeral")
+            return
+
+        workspace_id = workspace.id
+
+        # Step 2: all further queries use the RLS-enforced scoped session
+        async with get_session(workspace_id) as session:
+            q_result = await session.execute(
                 select(Question).where(Question.id == question_id)
             )
             question = q_result.scalar_one_or_none()
 
-        if question is None:
-            await respond(text="⚠️ Question not found.", response_type="ephemeral")
-            return
+            if question is None:
+                await respond(text="⚠️ Question not found.", response_type="ephemeral")
+                return
 
-        workspace_id = question.workspace_id
-
-        async with get_session(workspace_id) as session:
             actor = await _get_or_create_user(session, workspace_id, actor_slack_id)
 
             from relay.question.machine import resolve_question, InvalidStateTransition

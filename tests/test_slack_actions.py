@@ -21,12 +21,22 @@ from relay.slack.actions import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+TEAM_ID = "TTEST123"
+
 
 def _make_body(action_id: str, value: str, slack_user_id: str = "UACTOR") -> dict:
     return {
         "actions": [{"action_id": action_id, "value": value}],
         "user": {"id": slack_user_id},
+        "team": {"id": TEAM_ID},
     }
+
+
+def _make_workspace_mock(workspace_id: uuid.UUID | None = None) -> MagicMock:
+    ws = MagicMock()
+    ws.id = workspace_id or uuid.uuid4()
+    ws.slack_team_id = TEAM_ID
+    return ws
 
 
 def _make_question_mock(state: str = "open", workspace_id: uuid.UUID | None = None) -> MagicMock:
@@ -47,17 +57,20 @@ def _make_user_mock() -> MagicMock:
     return u
 
 
-def _make_session_for(question, user=None):
+def _make_unscoped_session_for(workspace):
+    """Build an AsyncMock session that returns the given workspace."""
+    session = AsyncMock()
+    ws_result = MagicMock()
+    ws_result.scalar_one_or_none.return_value = workspace
+    session.execute.return_value = ws_result
+    return session
+
+
+def _make_scoped_session_for(question, user=None):
     """Build an AsyncMock session that returns the given question and user."""
     session = AsyncMock()
     session.add = MagicMock()
     session.flush = AsyncMock()
-
-    def _execute_side_effect(stmt, *args, **kwargs):
-        result = MagicMock()
-        # First call returns question, second returns user
-        result.scalar_one_or_none.return_value = question if user is None else None
-        return result
 
     q_result = MagicMock()
     q_result.scalar_one_or_none.return_value = question
@@ -81,6 +94,26 @@ def _make_session_for(question, user=None):
 async def _session_ctx(workspace_id=None):
     """Yield a minimal mock session."""
     yield AsyncMock()
+
+
+def _make_two_session_ctx(workspace, question, user=None):
+    """
+    Returns a get_session factory that yields the unscoped workspace session first,
+    then the scoped question/mutation session on subsequent calls.
+    """
+    unscoped_session = _make_unscoped_session_for(workspace)
+    scoped_session = _make_scoped_session_for(question, user)
+    call_count = [0]
+
+    @asynccontextmanager
+    async def _ctx(workspace_id=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            yield unscoped_session
+        else:
+            yield scoped_session
+
+    return _ctx
 
 
 # ---------------------------------------------------------------------------
@@ -111,19 +144,11 @@ async def test_claim_question_acks_immediately():
     """ack() must be called regardless of success/failure."""
     ack = AsyncMock()
     respond = AsyncMock()
-    q = _make_question_mock("open")
+    ws = _make_workspace_mock()
+    q = _make_question_mock("open", workspace_id=ws.id)
     body = _make_body("relay_claim_question", str(q.id))
 
-    async def _session_ctx_scoped(workspace_id=None):
-        session = _make_session_for(q)
-
-        @asynccontextmanager
-        async def _ctx(workspace_id=workspace_id):
-            yield session
-
-        return _ctx
-
-    ctx = await _session_ctx_scoped()
+    ctx = _make_two_session_ctx(ws, q)
 
     with patch("relay.db.session.get_session", new=ctx):
         with patch("relay.question.machine.claim_question", new=AsyncMock()):
@@ -153,16 +178,29 @@ async def test_claim_question_question_not_found_responds():
     respond = AsyncMock()
     q_id = uuid.uuid4()
     body = _make_body("relay_claim_question", str(q_id))
+    ws = _make_workspace_mock()
+
+    # Unscoped returns workspace; scoped returns None for question
+    unscoped_session = _make_unscoped_session_for(ws)
+
+    scoped_session = AsyncMock()
+    scoped_session.add = MagicMock()
+    scoped_session.flush = AsyncMock()
+    none_result = MagicMock()
+    none_result.scalar_one_or_none.return_value = None
+    scoped_session.execute.return_value = none_result
+
+    call_count = [0]
 
     @asynccontextmanager
-    async def _none_session(workspace_id=None):
-        session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = None
-        session.execute.return_value = result
-        yield session
+    async def _ctx(workspace_id=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            yield unscoped_session
+        else:
+            yield scoped_session
 
-    with patch("relay.db.session.get_session", new=_none_session):
+    with patch("relay.db.session.get_session", new=_ctx):
         await handle_claim_question(ack=ack, body=body, respond=respond)
 
     ack.assert_awaited_once()
@@ -179,20 +217,13 @@ async def test_claim_question_question_not_found_responds():
 async def test_snooze_1h_acks():
     ack = AsyncMock()
     respond = AsyncMock()
-    q = _make_question_mock("open")
+    ws = _make_workspace_mock()
+    q = _make_question_mock("open", workspace_id=ws.id)
     body = _make_body("relay_snooze_1h", str(q.id))
 
-    @asynccontextmanager
-    async def _ctx(workspace_id=None):
-        session = AsyncMock()
-        session.add = MagicMock()
-        session.flush = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = q
-        session.execute.return_value = result
-        yield session
+    ctx = _make_two_session_ctx(ws, q)
 
-    with patch("relay.db.session.get_session", new=_ctx):
+    with patch("relay.db.session.get_session", new=ctx):
         with patch("relay.slack.actions._get_or_create_user", new=AsyncMock(return_value=_make_user_mock())):
             await handle_snooze_1h(ack=ack, body=body, respond=respond)
 
@@ -205,20 +236,13 @@ async def test_snooze_1h_acks():
 async def test_snooze_4h_acks():
     ack = AsyncMock()
     respond = AsyncMock()
-    q = _make_question_mock("open")
+    ws = _make_workspace_mock()
+    q = _make_question_mock("open", workspace_id=ws.id)
     body = _make_body("relay_snooze_4h", str(q.id))
 
-    @asynccontextmanager
-    async def _ctx(workspace_id=None):
-        session = AsyncMock()
-        session.add = MagicMock()
-        session.flush = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = q
-        session.execute.return_value = result
-        yield session
+    ctx = _make_two_session_ctx(ws, q)
 
-    with patch("relay.db.session.get_session", new=_ctx):
+    with patch("relay.db.session.get_session", new=ctx):
         with patch("relay.slack.actions._get_or_create_user", new=AsyncMock(return_value=_make_user_mock())):
             await handle_snooze_4h(ack=ack, body=body, respond=respond)
 
@@ -236,20 +260,13 @@ async def test_snooze_4h_acks():
 async def test_mark_not_question_acks_and_resolves():
     ack = AsyncMock()
     respond = AsyncMock()
-    q = _make_question_mock("open")
+    ws = _make_workspace_mock()
+    q = _make_question_mock("open", workspace_id=ws.id)
     body = _make_body("relay_mark_not_question", str(q.id))
 
-    @asynccontextmanager
-    async def _ctx(workspace_id=None):
-        session = AsyncMock()
-        session.add = MagicMock()
-        session.flush = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = q
-        session.execute.return_value = result
-        yield session
+    ctx = _make_two_session_ctx(ws, q)
 
-    with patch("relay.db.session.get_session", new=_ctx):
+    with patch("relay.db.session.get_session", new=ctx):
         with patch("relay.question.machine.resolve_question", new=AsyncMock()):
             with patch("relay.slack.actions._get_or_create_user", new=AsyncMock(return_value=_make_user_mock())):
                 await handle_mark_not_question(ack=ack, body=body, respond=respond)
