@@ -39,6 +39,27 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 connector purge)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-003 complete locally. Full suite green: 221 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Disconnect + Purge` button per connected source.
+- Added confirmation modal for connector purge.
+- Added connector-id-scoped `purge_connector` Celery task that deletes derived `knowledge_chunks` and `source_documents`, marks the connector disconnected, and resets sync status.
+- Added focused coverage for App Home button rendering and purge task behavior.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_connector_tasks.py tests/test_home.py -q` — 14 passed.
+- `.venv/bin/python -m pytest -q` — 221 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. KMS envelope encryption.
+2. Individual user erasure endpoint.
+3. Reviewer sandbox seed and walkthrough.
+
 ### Codex — 2026-06-07 (Plan 7 workspace deletion flow)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-002 mostly implemented locally. Full suite green: 220 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

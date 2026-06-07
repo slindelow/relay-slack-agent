@@ -7,10 +7,10 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from relay.connectors import registry
-from relay.db.models import SourceConnector
+from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument
 from relay.db.session import get_session
 from relay.worker.celery_app import celery
 
@@ -99,3 +99,42 @@ async def _sync_all_connectors_async() -> None:
     for row in rows:
         sync_connector.delay(str(row.workspace_id), str(row.id))
         logger.info("sync_all_connectors: enqueued connector %s", row.id)
+
+
+@celery.task(name="relay.purge_connector", bind=True, max_retries=0)
+def purge_connector(self, workspace_id_str: str, connector_id_str: str) -> None:
+    asyncio.run(_purge_connector_async(uuid.UUID(workspace_id_str), uuid.UUID(connector_id_str)))
+
+
+async def _purge_connector_async(workspace_id: uuid.UUID, connector_id: uuid.UUID) -> bool:
+    async with get_session(workspace_id) as session:
+        result = await session.execute(
+            select(SourceConnector).where(
+                SourceConnector.workspace_id == workspace_id,
+                SourceConnector.id == connector_id,
+                SourceConnector.disconnected_at.is_(None),
+            )
+        )
+        connector = result.scalar_one_or_none()
+        if connector is None:
+            return False
+
+        doc_ids = select(SourceDocument.id).where(
+            SourceDocument.workspace_id == workspace_id,
+            SourceDocument.connector_id == connector_id,
+        )
+        await session.execute(
+            delete(KnowledgeChunk).where(
+                KnowledgeChunk.workspace_id == workspace_id,
+                KnowledgeChunk.source_document_id.in_(doc_ids),
+            )
+        )
+        await session.execute(
+            delete(SourceDocument).where(
+                SourceDocument.workspace_id == workspace_id,
+                SourceDocument.connector_id == connector_id,
+            )
+        )
+        connector.disconnected_at = datetime.now(UTC)
+        connector.sync_status = "not_synced"
+        return True

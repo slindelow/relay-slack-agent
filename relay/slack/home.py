@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -67,7 +69,17 @@ def _connector_blocks(connector_rows: list[Any]) -> list[dict]:
         if is_stale:
             text += "\n:warning: Last synced over 24h ago — retrieval may be stale."
 
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Disconnect + Purge"},
+                "action_id": "relay_disconnect_purge_connector",
+                "value": str(row.id),
+                "style": "danger",
+            },
+        })
 
     return blocks
 
@@ -342,3 +354,73 @@ async def publish_app_home(event, client, body):
         user_id=event["user"],
         view={"type": "home", "blocks": blocks},
     )
+
+
+@app.action("relay_disconnect_purge_connector")
+async def handle_disconnect_purge_connector(ack, body, client):
+    await ack()
+    actions = body.get("actions", [])
+    connector_id = actions[0].get("value", "") if actions else ""
+    team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    trigger_id = body.get("trigger_id", "")
+    if not connector_id or not team_id or not trigger_id:
+        return
+
+    await client.views_open(
+        trigger_id=trigger_id,
+        view={
+            "type": "modal",
+            "callback_id": "relay_confirm_purge_connector",
+            "private_metadata": json.dumps({"team_id": team_id, "connector_id": connector_id}),
+            "title": {"type": "plain_text", "text": "Disconnect source"},
+            "submit": {"type": "plain_text", "text": "Purge"},
+            "close": {"type": "plain_text", "text": "Cancel"},
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Disconnect this source and permanently remove all indexed content from RELAY?",
+                    },
+                }
+            ],
+        },
+    )
+
+
+@app.view("relay_confirm_purge_connector")
+async def handle_confirm_purge_connector(ack, body, client):
+    await ack()
+    metadata = json.loads(body.get("view", {}).get("private_metadata", "{}"))
+    team_id = metadata.get("team_id", "")
+    connector_id_str = metadata.get("connector_id", "")
+    user_id = body.get("user", {}).get("id", "")
+
+    try:
+        connector_id = uuid.UUID(connector_id_str)
+    except ValueError:
+        return
+
+    try:
+        from sqlalchemy import select
+
+        from relay.db.models import Workspace
+        from relay.db.session import get_session
+        from relay.worker.connector_tasks import purge_connector
+
+        async with get_session() as session:
+            result = await session.execute(
+                select(Workspace).where(Workspace.slack_team_id == team_id)
+            )
+            workspace = result.scalar_one_or_none()
+            if workspace is None:
+                return
+
+        purge_connector.delay(str(workspace.id), str(connector_id))
+        if user_id:
+            await client.chat_postMessage(
+                channel=user_id,
+                text="Source disconnected. All indexed content will be removed shortly.",
+            )
+    except Exception:
+        return
