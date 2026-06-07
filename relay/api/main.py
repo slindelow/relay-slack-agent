@@ -7,11 +7,12 @@ from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from relay.config import get_settings
+from relay.db.engine import get_engine
 from relay.db.models import FeedbackSignal, User, Workspace
 from relay.db.session import get_session
 from relay.integrations.hubspot import (
@@ -26,13 +27,140 @@ from relay.slack.app import app as bolt_app
 
 logger = logging.getLogger(__name__)
 
+settings = get_settings()
+if settings.sentry_dsn:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        traces_sample_rate=0.0,
+    )
+
 api = FastAPI(title="RELAY", version="0.1.0")
 handler = AsyncSlackRequestHandler(bolt_app)
 
 
+async def _check_db() -> str:
+    try:
+        async with get_engine().connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return "ok"
+    except Exception:
+        logger.exception("health_db_check_failed")
+        return "error"
+
+
+async def _check_redis() -> str:
+    try:
+        import redis.asyncio as redis
+
+        client = redis.from_url(get_settings().redis_url, socket_connect_timeout=1, socket_timeout=1)
+        try:
+            await client.ping()
+        finally:
+            await client.aclose()
+        return "ok"
+    except Exception:
+        logger.exception("health_redis_check_failed")
+        return "error"
+
+
 @api.get("/health")
 async def health():
-    return {"status": "ok", "service": "relay"}
+    db_status = await _check_db()
+    redis_status = await _check_redis()
+    status = "ok" if db_status == "ok" and redis_status == "ok" else "error"
+    body = {"status": status, "service": "relay", "db": db_status, "redis": redis_status}
+    if status != "ok":
+        return JSONResponse(body, status_code=503)
+    return body
+
+
+def _html_page(title: str, body: str) -> HTMLResponse:
+    return HTMLResponse(
+        f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} | RELAY</title>
+  <style>
+    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.55; margin: 0; color: #17202a; }}
+    main {{ max-width: 840px; margin: 0 auto; padding: 48px 24px 72px; }}
+    h1, h2 {{ line-height: 1.2; }}
+    table {{ border-collapse: collapse; width: 100%; }}
+    th, td {{ border: 1px solid #d8dee4; padding: 8px; text-align: left; vertical-align: top; }}
+  </style>
+</head>
+<body><main>{body}</main></body>
+</html>"""
+    )
+
+
+@api.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy():
+    return _html_page(
+        "Privacy Policy",
+        """
+<h1>RELAY Privacy Policy</h1>
+<p>RELAY helps customer success teams monitor Slack Connect customer channels, detect unanswered questions, retrieve approved context, and draft responses for human approval.</p>
+<h2>Data We Collect</h2>
+<ul>
+  <li>Slack workspace identifiers, user identifiers, channel identifiers, and installation metadata.</li>
+  <li>Short message excerpts and question metadata from registered Slack Connect channels only.</li>
+  <li>Customer account metadata such as tier, ARR, renewal date, health score, and owner assignment when connected from CRM systems.</li>
+  <li>Drafts, approval metadata, feedback signals, impact metrics, and retrieval logs needed to operate and improve RELAY.</li>
+  <li>Optional connector content from administrator-configured knowledge sources such as Google Drive and GitHub.</li>
+</ul>
+<h2>Retention</h2>
+<p>Raw Slack excerpts are retained for up to 90 days. Operational metadata, drafts, feedback, retrieval logs, and impact metrics are retained for up to one year unless a workspace admin requests deletion earlier. Connector-derived content is removed when the connector is disconnected and purged.</p>
+<h2>Sub-processors</h2>
+<p>RELAY uses Anthropic for LLM processing with no-training/ZDR settings where available, an embedding provider for semantic retrieval, the selected cloud hosting provider, and Sentry for production error monitoring. See <a href="/sub-processors">Sub-processors</a>.</p>
+<h2>User Rights and Deletion</h2>
+<p>Workspace admins can request deletion through <code>/relay delete-workspace-data</code> once enabled or by contacting privacy@relay.example.com. Individual user erasure requests can be sent to the same address.</p>
+<h2>Contact</h2>
+<p>Privacy and DPA requests: privacy@relay.example.com.</p>
+""",
+    )
+
+
+@api.get("/terms", response_class=HTMLResponse)
+async def terms():
+    return _html_page(
+        "Terms of Service",
+        """
+<h1>RELAY Terms of Service</h1>
+<p>These terms govern use of RELAY, a Slack-native assistant for customer success teams. By installing or using RELAY, your organization agrees to use the service only for lawful business purposes and only in workspaces and channels where it has the right to process the relevant data.</p>
+<h2>Human Approval</h2>
+<p>RELAY drafts customer responses but does not send generated responses without human approval. Your organization is responsible for reviewing messages before they are posted.</p>
+<h2>Accounts and Access</h2>
+<p>Workspace administrators control installation, source connectors, user roles, and deletion requests. You are responsible for maintaining appropriate Slack and connector permissions.</p>
+<h2>Service Availability</h2>
+<p>RELAY is provided on a commercially reasonable basis. Beta and pilot deployments may change as Marketplace readiness work is completed.</p>
+<h2>Contact</h2>
+<p>Questions about these terms: legal@relay.example.com.</p>
+""",
+    )
+
+
+@api.get("/sub-processors", response_class=HTMLResponse)
+async def sub_processors():
+    return _html_page(
+        "Sub-processors",
+        """
+<h1>RELAY Sub-processors</h1>
+<table>
+  <thead><tr><th>Name</th><th>Service</th><th>Data Sent</th><th>Region</th><th>DPA</th></tr></thead>
+  <tbody>
+    <tr><td>Anthropic</td><td>LLM draft and summary generation</td><td>Question excerpts, retrieved evidence, account context needed for a draft</td><td>United States</td><td>Available from Anthropic</td></tr>
+    <tr><td>Embedding provider</td><td>Semantic embeddings</td><td>Connector chunks and approved Q+A text</td><td>United States</td><td>Provider DPA</td></tr>
+    <tr><td>Cloud hosting provider</td><td>Application hosting, database, queue</td><td>Application data stored by RELAY</td><td>United States</td><td>Provider DPA</td></tr>
+    <tr><td>Sentry</td><td>Error monitoring</td><td>Error traces and operational metadata; no intentional message content</td><td>United States</td><td>Available from Sentry</td></tr>
+  </tbody>
+</table>
+""",
+    )
 
 
 @api.post("/slack/events")

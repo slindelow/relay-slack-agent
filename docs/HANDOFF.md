@@ -39,6 +39,29 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 marketplace readiness start)
+Branch: `codex/plan-7-marketplace-readiness` stacked on `claude/plan-6-feedback-memory`
+Status: Plan 6 draft PR #14 is open. Plan 7 started with reviewer-visible pages, scope documentation, and monitoring health. Full suite green: 214 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added optional Sentry initialization in `relay/api/main.py`, controlled by `SENTRY_DSN`; startup remains silent when unset.
+- Extended `/health` to check database and Redis dependencies and return 503 when either is down.
+- Added unauthenticated `/privacy`, `/terms`, and `/sub-processors` HTML pages for Slack Marketplace review.
+- Added `docs/marketplace/scope-justification.md` covering each required Slack scope and confirming optional connector scopes.
+- Added tests for healthy/degraded health responses and public legal pages.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_api.py tests/test_config.py -q` — 7 passed, 1 warning.
+- `.venv/bin/python -m pytest -q` — 214 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Workspace deletion flow (`/relay delete-workspace-data` + Celery job tracking).
+2. Connector-level purge.
+3. KMS envelope encryption.
+4. Reviewer sandbox seed and walkthrough.
+
 ### Codex — 2026-06-06 (Plan 6 `/relay pulse`)
 Branch: `claude/plan-6-feedback-memory`
 Status: US-008 complete. Plan 6 implementation is complete on this branch. Full suite green: 209 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

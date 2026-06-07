@@ -1392,6 +1392,7 @@ dependencies = [
     { name = "pygithub" },
     { name = "python-dotenv" },
     { name = "redis" },
+    { name = "sentry-sdk", extra = ["celery", "fastapi"] },
     { name = "slack-bolt" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tiktoken" },
@@ -1425,6 +1426,7 @@ requires-dist = [
     { name = "pygithub", specifier = ">=2.3" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "redis", specifier = ">=5.2" },
+    { name = "sentry-sdk", extras = ["celery", "fastapi"], specifier = ">=2.0" },
     { name = "slack-bolt", extras = ["async"], specifier = ">=1.21" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "tiktoken", specifier = ">=0.7" },
@@ -1490,6 +1492,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
+]
+
+[[package]]
+name = "sentry-sdk"
+version = "2.61.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/3b/4bc6b348bbd331daa14d4babe9f2b99bc854f4da41560eefb9488d78481d/sentry_sdk-2.61.1.tar.gz", hash = "sha256:9c6adccb3feefa9ba032c8d295ca477575c2f11896046a2b0ad686c47c4af555", size = 459429, upload-time = "2026-06-01T07:24:18.875Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/54/c9218db183846e08efaf68534889ef42e499dde432778881104a42f7071b/sentry_sdk-2.61.1-py3-none-any.whl", hash = "sha256:fa36eaf4b8ad708f718500d4bdcc1532637526a22beb874d88cbc0a46458b5ae", size = 483735, upload-time = "2026-06-01T07:24:17.027Z" },
+]
+
+[package.optional-dependencies]
+celery = [
+    { name = "celery" },
+]
+fastapi = [
+    { name = "fastapi" },
 ]
 
 [[package]]
