@@ -39,6 +39,207 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 workspace deletion functional test)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: Remaining US-002 verification added. Full suite green locally: 231 passed, 20 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Updated `delete_workspace_data` to run the deletion transaction with workspace RLS context.
+- Added a Postgres-backed full-data-tree deletion test covering workspace settings, SLA policy, user, token, CRM connection, source connector, account, monitored channel, message, question, question event, alert, assignment, snooze, draft, source document, connector/memory chunks, retrieval log, feedback signal, impact metric, classification feedback, deletion job, workspace deletion, and final audit entry.
+- The integration test uses the existing `engine` fixture and skips locally when Postgres is unavailable; CI now has Postgres from the existing workflow service.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_deletion_tasks.py -q` — 2 passed, 1 skipped locally because Postgres is unavailable.
+- `.venv/bin/python -m pytest tests/test_delete_command.py tests/test_slack_events.py -q` — 3 passed.
+- `.venv/bin/python -m pytest -q` — 231 passed, 20 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Local caveat:
+- Live deletion verification did not execute on this machine because Postgres is not listening on `localhost:5432` and Docker is not installed. The test is present and should run in CI's Postgres service.
+
+Next recommended step:
+1. Push `codex/plan-7-marketplace-readiness` and open a Plan 7 PR after reviewing the stacked branch base.
+
+### Codex — 2026-06-07 (Plan 7 Celery health in CI)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-008 complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added Redis as a GitHub Actions service.
+- Added explicit CI env needed to import the RELAY app outside pytest fixtures.
+- Added a `Check Celery worker health` step that starts a solo worker and runs `celery inspect ping`.
+
+Tests/verification:
+- `.venv/bin/python -m pytest -q` — 231 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ci.yml")'` — passed.
+
+Local caveat:
+- Live Celery ping was not run locally because this machine does not have `redis-cli`/Redis available; the new CI service provides Redis for the check.
+
+Next recommended Plan 7 step:
+1. Live full-data-tree workspace deletion verification when a reachable Postgres test DB is available.
+
+### Codex — 2026-06-07 (Plan 7 KMS re-encryption script)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: Remaining US-001 migration script complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `scripts/reencrypt_workspace_tokens_kms.py`, an offline migration script that processes workspaces without `wrapped_dek`.
+- The script requires configured KMS, creates a per-workspace DEK, decrypts existing `WorkspaceToken`, `CrmConnection`, and `SourceConnector` secrets with the legacy global key, then writes them back under the workspace DEK in the same transaction.
+- Added `--workspace-id` and `--dry-run` options.
+- Marked `TOKEN_ENCRYPTION_KEY` in config as the legacy fallback for pre-KMS rows.
+- Added helper tests proving plaintext survives re-encryption to a new key.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_kms_reencrypt_script.py tests/test_crypto.py -q` — 12 passed.
+- `.venv/bin/python -m pytest -q` — 231 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Celery inspect/CI health check.
+2. Live full-data-tree workspace deletion verification when a reachable Postgres test DB is available.
+
+### Codex — 2026-06-07 (Plan 7 reviewer sandbox)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-007 complete locally. Full suite green: 229 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `scripts/seed_reviewer_sandbox.py`, an idempotent sandbox reset/seed script for Slack Marketplace review.
+- The seed creates one reviewer workspace, two accounts, two Slack Connect channels, three active questions covering past-SLA/snoozed/claimed states, one pending draft, and two resolved questions with `KnowledgeEntry` memory.
+- Added `docs/marketplace/reviewer-walkthrough.md` with install, register, alert/claim, draft approval, memory ask, account pulse, connector purge, workspace deletion, and public compliance-page checks.
+
+Tests/verification:
+- `.venv/bin/python -m py_compile scripts/seed_reviewer_sandbox.py` — passed.
+- `.venv/bin/python -m pytest -q` — 229 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. KMS re-encryption script.
+2. Celery inspect/CI health check.
+
+### Codex — 2026-06-07 (Plan 7 individual user erasure)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-004 complete locally. Focused tests green: 28 passed, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0009_plan7_user_erasure.py` and `users.deleted_at`.
+- Added signed confirmation token helper and admin-only `DELETE /relay/admin/users/{slack_user_id}/erase`.
+- The erasure endpoint authenticates with Slack `auth.test`, verifies the local requester is a RELAY admin, clears user display name/email, timestamps deletion, nulls nullable actor references, removes Slack sender IDs from message rows, and records a `user_erased` audit event.
+- Added focused tests for deterministic confirmation tokens, invalid-token rejection, erasure side effects, and model coverage.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_user_erasure.py tests/test_models.py -q` — 28 passed, 1 warning.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Reviewer sandbox seed and walkthrough.
+2. KMS re-encryption script.
+3. Celery inspect/CI health check.
+
+### Codex — 2026-06-07 (Plan 7 KMS envelope foundation)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-001 foundation implemented locally. Full suite green: 225 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0008_plan7_kms.py` with `workspaces.wrapped_dek` and `workspaces.kms_key_id`.
+- Added KMS provider abstraction, AWS KMS implementation, `generate_dek`, `wrap_dek`, `unwrap_dek`, `ensure_workspace_dek`, and fallback key resolution.
+- Added config fields `KMS_PROVIDER` and `KMS_KEY_ID`, plus `boto3` dependency.
+- Wired Slack bot token, HubSpot token, GitHub connector credential, Google Drive credential, SLA poller, and HubSpot worker encryption/decryption paths to use workspace DEKs when KMS is configured, with global-key fallback for existing rows.
+- Added mocked KMS roundtrip/fallback tests and workspace model coverage.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_crypto.py tests/test_config.py tests/test_models.py -q` — 38 passed.
+- `.venv/bin/python -m pytest tests/test_github_connector.py tests/test_google_drive_connector.py tests/test_hubspot.py tests/test_oauth.py -q` — 18 passed, 9 skipped.
+- `.venv/bin/python -m pytest -q` — 225 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — renders through `0008_plan7_kms`.
+- `git diff --check` — passed.
+
+Remaining for US-001:
+- Add offline re-encryption script for existing global-key-encrypted rows.
+- Decide/confirm production KMS provider and IAM deployment details.
+
+Next recommended Plan 7 steps:
+1. Individual user erasure endpoint.
+2. Reviewer sandbox seed and walkthrough.
+3. KMS re-encryption script.
+
+### Codex — 2026-06-07 (Plan 7 connector purge)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-003 complete locally. Full suite green: 221 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Disconnect + Purge` button per connected source.
+- Added confirmation modal for connector purge.
+- Added connector-id-scoped `purge_connector` Celery task that deletes derived `knowledge_chunks` and `source_documents`, marks the connector disconnected, and resets sync status.
+- Added focused coverage for App Home button rendering and purge task behavior.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_connector_tasks.py tests/test_home.py -q` — 14 passed.
+- `.venv/bin/python -m pytest -q` — 221 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. KMS envelope encryption.
+2. Individual user erasure endpoint.
+3. Reviewer sandbox seed and walkthrough.
+
+### Codex — 2026-06-07 (Plan 7 workspace deletion flow)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-002 mostly implemented locally. Full suite green: 220 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0007_plan7_deletion.py` and ORM model `WorkspaceDeletionJob` for deletion job status tracking.
+- Added `relay.worker.deletion_tasks.delete_workspace_data`, with explicit dependency-order deletes, final `audit_log` entry, workspace row deletion, and failed-job marking.
+- Added `/relay delete-workspace-data` confirmation modal and confirmation handler that creates a job and enqueues deletion.
+- Added Slack `app_uninstalled` handler that revokes active workspace tokens and enqueues the same deletion task.
+- Registered deletion tasks with Celery and updated `/relay help` routing/copy.
+- Added focused unit tests for modal construction, job creation, delete-order guarantees, and message event enqueue behavior.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_delete_command.py tests/test_deletion_tasks.py tests/test_slack_events.py tests/test_models.py -q` — 29 passed.
+- `.venv/bin/python -m pytest -q` — 220 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — rendered through `0007_plan7_deletion`.
+- `git diff --check` — passed.
+
+Remaining for US-002:
+- Add a live DB functional test that creates a full data tree, runs deletion, and verifies rows are gone.
+
+Next recommended Plan 7 steps:
+1. Connector-level purge.
+2. KMS envelope encryption.
+3. Reviewer sandbox seed and walkthrough.
+
+### Codex — 2026-06-07 (Plan 7 marketplace readiness start)
+Branch: `codex/plan-7-marketplace-readiness` stacked on `claude/plan-6-feedback-memory`
+Status: Plan 6 draft PR #14 is open. Plan 7 started with reviewer-visible pages, scope documentation, and monitoring health. Full suite green: 214 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added optional Sentry initialization in `relay/api/main.py`, controlled by `SENTRY_DSN`; startup remains silent when unset.
+- Extended `/health` to check database and Redis dependencies and return 503 when either is down.
+- Added unauthenticated `/privacy`, `/terms`, and `/sub-processors` HTML pages for Slack Marketplace review.
+- Added `docs/marketplace/scope-justification.md` covering each required Slack scope and confirming optional connector scopes.
+- Added tests for healthy/degraded health responses and public legal pages.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_api.py tests/test_config.py -q` — 7 passed, 1 warning.
+- `.venv/bin/python -m pytest -q` — 214 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Workspace deletion flow (`/relay delete-workspace-data` + Celery job tracking).
+2. Connector-level purge.
+3. KMS envelope encryption.
+4. Reviewer sandbox seed and walkthrough.
+
 ### Codex — 2026-06-06 (Plan 6 `/relay pulse`)
 Branch: `claude/plan-6-feedback-memory`
 Status: US-008 complete. Plan 6 implementation is complete on this branch. Full suite green: 209 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

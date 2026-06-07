@@ -20,6 +20,7 @@ from relay.db.models import (
     SourceDocument,
     User,
     Workspace,
+    WorkspaceDeletionJob,
     WorkspaceSettings,
     WorkspaceToken,
 )
@@ -30,11 +31,14 @@ def test_workspace_has_distinct_slack_team_id_and_internal_uuid():
     assert workspace.id is not None
     assert workspace.slack_team_id == "T12345"
     assert str(workspace.id) != "T12345"
+    assert "wrapped_dek" in Workspace.__table__.columns
+    assert "kms_key_id" in Workspace.__table__.columns
 
 
 def test_all_tenant_tables_have_workspace_id():
     for model in (
         WorkspaceToken,
+        WorkspaceDeletionJob,
         WorkspaceSettings,
         SlaPolicy,
         User,
@@ -73,6 +77,21 @@ def test_audit_log_has_soc2_attribution_fields():
         "new_value",
     }
     assert required.issubset(cols)
+
+
+def test_workspace_deletion_job_tracks_status():
+    cols = {column.key for column in WorkspaceDeletionJob.__table__.columns}
+    assert {
+        "workspace_id",
+        "status",
+        "actor_slack_user_id",
+        "error",
+        "started_at",
+        "completed_at",
+        "created_at",
+    }.issubset(cols)
+    constraints = {constraint.name for constraint in WorkspaceDeletionJob.__table__.constraints}
+    assert "ck_workspace_deletion_jobs_status" in constraints
 
 
 def test_workspace_settings_has_configurable_thresholds():
@@ -120,6 +139,11 @@ def test_customer_account_has_crm_and_ownership_fields():
         "deleted_at",
     }
     assert required.issubset(cols)
+
+
+def test_user_has_erasure_timestamp():
+    cols = {column.key for column in User.__table__.columns}
+    assert "deleted_at" in cols
 
 
 def test_monitored_channel_stores_customer_workspace_identity():

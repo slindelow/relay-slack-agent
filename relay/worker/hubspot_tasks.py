@@ -32,13 +32,12 @@ async def _sync_hubspot_accounts_async(workspace_id: str) -> None:
     from datetime import datetime, timezone
 
     from relay.config import get_settings
-    from relay.crypto import decrypt_token
-    from relay.db.models import CrmConnection, CustomerAccount
+    from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
+    from relay.db.models import CrmConnection, CustomerAccount, Workspace
     from relay.db.session import get_session
     from relay.integrations.hubspot import fetch_hubspot_companies
 
     settings = get_settings()
-    key = settings.token_encryption_key_bytes
     ws_uuid = UUID(workspace_id)
 
     async with get_session(workspace_id=ws_uuid) as session:
@@ -56,6 +55,13 @@ async def _sync_hubspot_accounts_async(workspace_id: str) -> None:
                 "No active HubSpot connection found for workspace_id=%s", workspace_id
             )
             return
+
+        key = settings.token_encryption_key_bytes
+        kms_provider = kms_provider_from_settings(settings)
+        if kms_provider is not None:
+            workspace_result = await session.execute(select(Workspace).where(Workspace.id == ws_uuid))
+            workspace = workspace_result.scalar_one()
+            key = workspace_encryption_key(workspace, key, kms_provider)
 
         # Decrypt access token
         access_token = decrypt_token(

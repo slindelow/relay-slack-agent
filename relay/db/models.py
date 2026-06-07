@@ -68,6 +68,8 @@ class Workspace(Base):
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wrapped_dek: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    kms_key_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     tokens: Mapped[list["WorkspaceToken"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     settings: Mapped["WorkspaceSettings | None"] = relationship(back_populates="workspace", uselist=False, cascade="all, delete-orphan")
@@ -99,6 +101,27 @@ class WorkspaceToken(Base):
     is_revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     workspace: Mapped[Workspace] = relationship(back_populates="tokens")
+
+
+class WorkspaceDeletionJob(Base):
+    __tablename__ = "workspace_deletion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    actor_slack_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','complete','failed')",
+            name="ck_workspace_deletion_jobs_status",
+        ),
+        Index("idx_workspace_deletion_jobs_workspace_created", "workspace_id", "created_at"),
+    )
 
 
 class WorkspaceSettings(Base):
@@ -147,6 +170,7 @@ class User(Base):
     is_ooo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("workspace_id", "slack_user_id", name="uq_user_workspace"),

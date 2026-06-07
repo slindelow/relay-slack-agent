@@ -23,8 +23,25 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
+      ANTHROPIC_API_KEY: sk-test
+      APP_BASE_URL: https://relay.example.com
+      DATABASE_URL: postgresql+asyncpg://relay:relay@localhost:5432/relay_test
+      REDIS_URL: redis://localhost:6379/0
+      SLACK_CLIENT_ID: client
+      SLACK_CLIENT_SECRET: secret
+      SLACK_SIGNING_SECRET: signing
       TEST_DATABASE_URL: postgresql+asyncpg://relay:relay@localhost:5432/relay_test
+      TOKEN_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -40,6 +57,19 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests -v --tb=short
+
+      - name: Check Celery worker health
+        run: |
+          uv run celery -A relay.worker.celery_app.celery worker --loglevel=INFO --pool=solo --concurrency=1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if uv run celery -A relay.worker.celery_app.celery inspect ping --timeout=5; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
 
       - name: Run critical coverage
         run: uv run pytest tests --cov=relay.crypto --cov=relay.slack.verify --cov=classifier.evaluate --cov-report=term-missing

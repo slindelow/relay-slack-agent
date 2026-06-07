@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     test_database_url: str = "postgresql+asyncpg://relay:relay@localhost:5432/relay_test"
     redis_url: str = "redis://localhost:6379/0"
 
-    token_encryption_key: str
+    token_encryption_key: str = Field(
+        description="Legacy fallback key used before workspace KMS envelope encryption is migrated.",
+    )
 
     anthropic_api_key: str
     classifier_model: str = "claude-3-5-haiku-latest"
@@ -27,6 +29,9 @@ class Settings(BaseSettings):
 
     app_base_url: str
     environment: str = "development"
+    sentry_dsn: str = ""
+    kms_provider: str = "none"
+    kms_key_id: str = ""
 
     # HubSpot OAuth (optional — defaults to "" so existing tests don't break)
     hubspot_client_id: str = ""
