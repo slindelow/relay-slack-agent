@@ -14,14 +14,14 @@
 | 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
-| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 In progress — legal pages, scope doc, health/Sentry, deletion/purge, KMS foundation | Local branch `codex/plan-7-marketplace-readiness` |
+| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 In progress — legal pages, scope doc, health/Sentry, deletion/purge, KMS foundation, user erasure | Local branch `codex/plan-7-marketplace-readiness` |
 
 ---
 
 ## Immediate Next Steps
 
 1. Merge Plan 6 PR #14 when CI/review are green.
-2. Continue Plan 7: user erasure, reviewer sandbox, KMS migration script.
+2. Continue Plan 7: reviewer sandbox and KMS migration script.
 
 ---
 
@@ -78,4 +78,5 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - 🟡 US-002: Added workspace deletion job table/model, `/relay delete-workspace-data` confirmation modal, Celery deletion task, and Slack uninstall token revocation + deletion enqueue. Live full-data-tree DB test remains.
 - ✅ US-003: Added App Home "Disconnect + Purge" flow and connector-id-scoped purge task for chunks/documents + disconnected marker.
 - 🟡 US-001: Added KMS columns, AWS KMS provider abstraction, DEK helpers, mocked KMS tests, and workspace-DEK write/read paths with global-key fallback. Offline re-encryption script remains.
-- ⏭️ Next: US-004 individual user erasure, US-007 reviewer sandbox, and US-001 re-encryption script.
+- ✅ US-004: Added signed-confirmation admin user erasure endpoint, `users.deleted_at`, and anonymization of user PII plus nullable actor references.
+- ⏭️ Next: US-007 reviewer sandbox and US-001 re-encryption script.

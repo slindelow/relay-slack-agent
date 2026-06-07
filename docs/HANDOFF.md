@@ -39,6 +39,25 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 individual user erasure)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-004 complete locally. Focused tests green: 28 passed, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0009_plan7_user_erasure.py` and `users.deleted_at`.
+- Added signed confirmation token helper and admin-only `DELETE /relay/admin/users/{slack_user_id}/erase`.
+- The erasure endpoint authenticates with Slack `auth.test`, verifies the local requester is a RELAY admin, clears user display name/email, timestamps deletion, nulls nullable actor references, removes Slack sender IDs from message rows, and records a `user_erased` audit event.
+- Added focused tests for deterministic confirmation tokens, invalid-token rejection, erasure side effects, and model coverage.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_user_erasure.py tests/test_models.py -q` — 28 passed, 1 warning.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Reviewer sandbox seed and walkthrough.
+2. KMS re-encryption script.
+3. Celery inspect/CI health check.
+
 ### Codex — 2026-06-07 (Plan 7 KMS envelope foundation)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-001 foundation implemented locally. Full suite green: 225 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
