@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.config import get_settings
-from relay.crypto import encrypt_token
+from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
 from relay.db.models import SlaPolicy, Workspace, WorkspaceSettings, WorkspaceToken
 
 
@@ -62,6 +62,7 @@ async def store_bot_token(
 ) -> WorkspaceToken:
     settings = get_settings()
     await _set_workspace_context(session, workspace_id)
+    kms_provider = kms_provider_from_settings(settings)
     existing = await session.execute(
         select(WorkspaceToken).where(
             WorkspaceToken.workspace_id == workspace_id,
@@ -73,7 +74,14 @@ async def store_bot_token(
         old_token.is_revoked = True
         old_token.revoked_at = datetime.now(timezone.utc)
 
-    ciphertext, nonce = encrypt_token(bot_token, settings.token_encryption_key_bytes)
+    key = settings.token_encryption_key_bytes
+    if kms_provider is not None:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.id == workspace_id)
+        )
+        workspace = workspace_result.scalar_one()
+        key = ensure_workspace_dek(workspace, key, kms_provider)
+    ciphertext, nonce = encrypt_token(bot_token, key)
     token = WorkspaceToken(
         workspace_id=workspace_id,
         token_type="bot",

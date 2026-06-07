@@ -176,8 +176,8 @@ async def store_hubspot_connection(
     from sqlalchemy import select, text
 
     from relay.config import get_settings
-    from relay.crypto import encrypt_token
-    from relay.db.models import CrmConnection as _CrmConnection
+    from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
+    from relay.db.models import CrmConnection as _CrmConnection, Workspace
 
     access_token = token_response["access_token"]
     refresh_token = token_response.get("refresh_token")
@@ -187,7 +187,9 @@ async def store_hubspot_connection(
     access_token_expires_at = None
     if expires_in is not None:
         access_token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
-    key = get_settings().token_encryption_key_bytes
+    settings = get_settings()
+    key = settings.token_encryption_key_bytes
+    kms_provider = kms_provider_from_settings(settings)
 
     await session.execute(
         text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
@@ -201,6 +203,11 @@ async def store_hubspot_connection(
         )
     )
     connection = result.scalar_one_or_none()
+
+    if kms_provider is not None:
+        workspace_result = await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+        workspace = workspace_result.scalar_one()
+        key = ensure_workspace_dek(workspace, key, kms_provider)
 
     encrypted_access_token, access_nonce = encrypt_token(access_token, key)
     encrypted_refresh_token = None

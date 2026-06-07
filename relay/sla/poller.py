@@ -87,7 +87,7 @@ async def _alert_question(
     from slack_sdk.web.async_client import AsyncWebClient
     from sqlalchemy import select
 
-    from relay.crypto import decrypt_token
+    from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
     from relay.db.models import (
         Alert,
         CustomerAccount,
@@ -97,6 +97,7 @@ async def _alert_question(
         Snooze,
         User,
         WorkspaceToken,
+        Workspace,
     )
     from relay.db.session import get_session
     from relay.sla.alerts import build_alert_blocks
@@ -194,10 +195,19 @@ async def _alert_question(
             logger.error("poll_sla: no active bot token for workspace %s", workspace_id)
             return
 
+        key = settings.token_encryption_key_bytes
+        kms_provider = kms_provider_from_settings(settings)
+        if kms_provider is not None:
+            workspace_result = await session.execute(
+                select(Workspace).where(Workspace.id == workspace_id)
+            )
+            workspace = workspace_result.scalar_one()
+            key = workspace_encryption_key(workspace, key, kms_provider)
+
         bot_token = decrypt_token(
             token_row.encrypted_token,
             token_row.encrypted_token_nonce,
-            settings.token_encryption_key_bytes,
+            key,
         )
 
         # 8. Build Block Kit card and send DM

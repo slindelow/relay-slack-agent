@@ -14,8 +14,8 @@ from relay.config import get_settings
 from relay.connectors.base import Connector
 from relay.connectors.chunking import chunk_text
 from relay.connectors.embeddings import embed_chunks
-from relay.crypto import decrypt_token
-from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument
+from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
+from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument, Workspace
 from relay.db.session import get_session
 
 try:
@@ -159,12 +159,19 @@ class GitHubConnector(Connector):
             if connector is None:
                 return
 
+            key = settings.token_encryption_key_bytes
+            kms_provider = kms_provider_from_settings(settings)
+            if kms_provider is not None:
+                workspace_result = await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+                workspace = workspace_result.scalar_one()
+                key = workspace_encryption_key(workspace, key, kms_provider)
+
             token = settings.github_token
             if connector.encrypted_credentials:
                 token = decrypt_token(
                     connector.encrypted_credentials,
                     connector.encrypted_credentials_nonce,
-                    settings.token_encryption_key_bytes,
+                    key,
                 )
             if not token:
                 return

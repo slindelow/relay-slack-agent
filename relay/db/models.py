@@ -68,6 +68,8 @@ class Workspace(Base):
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    wrapped_dek: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    kms_key_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     tokens: Mapped[list["WorkspaceToken"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     settings: Mapped["WorkspaceSettings | None"] = relationship(back_populates="workspace", uselist=False, cascade="all, delete-orphan")

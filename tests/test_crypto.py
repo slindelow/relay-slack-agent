@@ -1,6 +1,6 @@
 import pytest
 
-from relay.crypto import decrypt_token, encrypt_token
+from relay.crypto import decrypt_token, ensure_workspace_dek, generate_dek, unwrap_dek, wrap_dek, workspace_encryption_key, encrypt_token
 
 FAKE_KEY = bytes.fromhex("a" * 64)
 
@@ -38,3 +38,37 @@ def test_tampered_ciphertext_raises():
     with pytest.raises(Exception):
         decrypt_token(tampered, nonce, FAKE_KEY)
 
+
+class FakeKMS:
+    key_id = "test-key"
+
+    def wrap_key(self, plaintext_dek: bytes) -> bytes:
+        return b"wrapped:" + plaintext_dek
+
+    def unwrap_key(self, wrapped_dek: bytes) -> bytes:
+        assert wrapped_dek.startswith(b"wrapped:")
+        return wrapped_dek.removeprefix(b"wrapped:")
+
+
+def test_generate_dek_is_32_bytes():
+    assert len(generate_dek()) == 32
+
+
+def test_wrap_unwrap_dek_with_mocked_kms():
+    dek = generate_dek()
+    wrapped = wrap_dek(dek, FakeKMS())
+    assert wrapped != dek
+    assert unwrap_dek(wrapped, FakeKMS()) == dek
+
+
+def test_workspace_encryption_key_falls_back_without_wrapped_dek():
+    workspace = type("Workspace", (), {"wrapped_dek": None})()
+    assert workspace_encryption_key(workspace, FAKE_KEY, FakeKMS()) == FAKE_KEY
+
+
+def test_ensure_workspace_dek_sets_wrapped_dek():
+    workspace = type("Workspace", (), {"wrapped_dek": None, "kms_key_id": None})()
+    dek = ensure_workspace_dek(workspace, FAKE_KEY, FakeKMS())
+    assert dek != FAKE_KEY
+    assert workspace.wrapped_dek == b"wrapped:" + dek
+    assert workspace.kms_key_id == "test-key"

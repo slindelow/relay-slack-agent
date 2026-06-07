@@ -31,6 +31,8 @@ def test_workspace_has_distinct_slack_team_id_and_internal_uuid():
     assert workspace.id is not None
     assert workspace.slack_team_id == "T12345"
     assert str(workspace.id) != "T12345"
+    assert "wrapped_dek" in Workspace.__table__.columns
+    assert "kms_key_id" in Workspace.__table__.columns
 
 
 def test_all_tenant_tables_have_workspace_id():
