@@ -149,3 +149,119 @@ async def test_register_rejected_for_non_admin():
     respond.assert_called_once()
     text = respond.call_args.kwargs.get("text", "")
     assert "admin" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Draft send guards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_send_draft_rejected_for_viewer():
+    """Viewer cannot send drafts to customer channel."""
+    import json
+    from relay.slack.draft_actions import handle_send_draft
+
+    ack = AsyncMock()
+    client = AsyncMock()
+
+    workspace_id = uuid.uuid4()
+    draft_id = uuid.uuid4()
+    question_id = uuid.uuid4()
+
+    body = {
+        "user": {"id": "U_VIEWER"},
+        "view": {
+            "private_metadata": json.dumps(
+                {"draft_id": str(draft_id), "workspace_id": str(workspace_id)}
+            ),
+            "state": {
+                "values": {
+                    "response_body": {
+                        "response_body_value": {"value": "Here is my answer."}
+                    }
+                }
+            },
+        },
+    }
+
+    mock_draft = MagicMock()
+    mock_draft.question_id = question_id
+    mock_draft.status = "pending"
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.commit = AsyncMock()
+
+    draft_result = MagicMock()
+    draft_result.scalar_one_or_none.return_value = mock_draft
+    # Auth check: None = not authorized (viewer)
+    auth_result = MagicMock()
+    auth_result.scalar_one_or_none.return_value = None
+    mock_session.execute = AsyncMock(side_effect=[draft_result, auth_result])
+
+    with patch("relay.slack.draft_actions.get_session", return_value=mock_session):
+        await handle_send_draft(ack=ack, body=body, client=client)
+
+    client.chat_postMessage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_draft_rejects_empty_response_body():
+    """Empty response_body is not posted to the customer channel."""
+    import json
+    from relay.slack.draft_actions import handle_send_draft
+    from relay.db.models import User
+
+    ack = AsyncMock()
+    client = AsyncMock()
+
+    workspace_id = uuid.uuid4()
+    draft_id = uuid.uuid4()
+    question_id = uuid.uuid4()
+
+    body = {
+        "user": {"id": "U_ADMIN"},
+        "view": {
+            "private_metadata": json.dumps(
+                {"draft_id": str(draft_id), "workspace_id": str(workspace_id)}
+            ),
+            "state": {
+                "values": {
+                    "response_body": {
+                        "response_body_value": {"value": "   "}  # whitespace only
+                    }
+                }
+            },
+        },
+    }
+
+    mock_draft = MagicMock()
+    mock_draft.question_id = question_id
+    mock_draft.status = "pending"
+
+    mock_admin = MagicMock(spec=User)
+    mock_admin.relay_role = "admin"
+    mock_admin.id = uuid.uuid4()
+    mock_admin.display_name = "Admin"
+    mock_admin.slack_user_id = "U_ADMIN"
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+    mock_session.commit = AsyncMock()
+
+    draft_result = MagicMock()
+    draft_result.scalar_one_or_none.return_value = mock_draft
+    auth_result = MagicMock()
+    auth_result.scalar_one_or_none.return_value = mock_admin  # authorized
+    # question result, actor result, channel result
+    q_result = MagicMock()
+    q_result.scalar_one_or_none.return_value = None  # no question needed — empty body guard fires first
+    mock_session.execute = AsyncMock(side_effect=[draft_result, auth_result, q_result])
+
+    with patch("relay.slack.draft_actions.get_session", return_value=mock_session):
+        await handle_send_draft(ack=ack, body=body, client=client)
+
+    client.chat_postMessage.assert_not_called()

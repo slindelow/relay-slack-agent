@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime
 
 from relay.slack.app import app
+from relay.db.session import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,6 @@ async def handle_send_draft(ack, body, client):
             Assignment, Draft, ImpactMetric, MonitoredChannel,
             Question, QuestionEvent, SlaPolicy, User,
         )
-        from relay.db.session import get_session
         from relay.drafting.memory import index_approved_response
         from relay.question.machine import resolve_question
 
@@ -184,6 +184,16 @@ async def handle_send_draft(ack, body, client):
                 logger.warning("relay_send_draft: draft %s not found", draft_id)
                 return
 
+            # Role check — only admin / csm may send drafts
+            from relay.auth import require_relay_csm
+            is_authorized = await require_relay_csm(session, workspace_id, user_id)
+            if not is_authorized:
+                logger.warning(
+                    "relay_send_draft: unauthorized send attempt by %s for draft %s",
+                    user_id, draft_id,
+                )
+                return
+
             # Load question
             q_result = await session.execute(
                 select(Question).where(
@@ -192,14 +202,6 @@ async def handle_send_draft(ack, body, client):
                 )
             )
             question = q_result.scalar_one_or_none()
-
-            # Resolve approver User
-            actor_result = await session.execute(
-                select(User).where(User.workspace_id == workspace_id, User.slack_user_id == user_id)
-            )
-            actor = actor_result.scalar_one_or_none()
-            actor_id = actor.id if actor else None
-            csm_name = (actor.display_name or actor.slack_user_id) if actor else "your CSM"
 
             # Find customer channel
             channel_id_slack = None
@@ -213,6 +215,19 @@ async def handle_send_draft(ack, body, client):
                 channel = ch_result.scalar_one_or_none()
                 if channel:
                     channel_id_slack = channel.slack_channel_id
+
+            # Empty body guard
+            if not response_body.strip():
+                logger.warning("relay_send_draft: empty response_body, aborting send")
+                return
+
+            # Resolve approver User
+            actor_result = await session.execute(
+                select(User).where(User.workspace_id == workspace_id, User.slack_user_id == user_id)
+            )
+            actor = actor_result.scalar_one_or_none()
+            actor_id = actor.id if actor else None
+            csm_name = (actor.display_name or actor.slack_user_id) if actor else "your CSM"
 
             # Post to customer channel
             if channel_id_slack:
