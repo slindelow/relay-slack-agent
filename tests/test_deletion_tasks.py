@@ -152,6 +152,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 ),
             ]
         )
+        await session.flush()
         session.add(
             CustomerAccount(
                 id=account_id,
@@ -162,6 +163,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 sla_policy_id=sla_id,
             )
         )
+        await session.flush()
         session.add(
             MonitoredChannel(
                 id=channel_id,
@@ -172,6 +174,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 registered_by_user_id=user_id,
             )
         )
+        await session.flush()
         session.add(
             Message(
                 id=message_id,
@@ -183,6 +186,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 raw_excerpt="Can you delete this workspace?",
             )
         )
+        await session.flush()
         session.add(
             Question(
                 id=question_id,
@@ -196,6 +200,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 next_alert_at=now,
             )
         )
+        await session.flush()
         session.add_all(
             [
                 QuestionEvent(
@@ -236,6 +241,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 editor_user_id=user_id,
             )
         )
+        await session.flush()
         session.add(
             SourceDocument(
                 id=document_id,
@@ -247,6 +253,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 content_hash="doc-hash",
             )
         )
+        await session.flush()
         session.add(
             KnowledgeEntry(
                 id=knowledge_entry_id,
@@ -259,6 +266,7 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                 source_bundle={},
             )
         )
+        await session.flush()
         session.add_all(
             [
                 KnowledgeChunk(
