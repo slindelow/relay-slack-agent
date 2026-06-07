@@ -35,6 +35,8 @@ def test_build_home_with_google_drive_connector():
     assert connector_text is not None
     assert ":page_facing_up:" in connector_text
     assert "synced" in connector_text.lower()
+    accessories = [b.get("accessory", {}) for b in blocks if b.get("accessory")]
+    assert any(button.get("action_id") == "relay_disconnect_purge_connector" for button in accessories)
 
 
 def test_build_home_connector_shows_sync_status():

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from relay.worker.connector_tasks import _sync_all_connectors_async, _sync_connector_async
+from relay.worker.connector_tasks import _purge_connector_async, _sync_all_connectors_async, _sync_connector_async
 
 
 def _make_connector_row(connector_id, workspace_id, connector_type="google_drive"):
@@ -100,3 +100,23 @@ async def test_sync_all_connectors_enqueues_per_connector():
         await _sync_all_connectors_async()
 
     mock_delay.assert_called_once_with(str(workspace_id), str(connector_id))
+
+
+@pytest.mark.asyncio
+async def test_purge_connector_deletes_documents_and_marks_disconnected():
+    workspace_id = uuid.uuid4()
+    connector_id = uuid.uuid4()
+    connector_row = _make_connector_row(connector_id, workspace_id)
+
+    session = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = connector_row
+    session.execute = AsyncMock(return_value=result)
+
+    with patch("relay.worker.connector_tasks.get_session", new=_session_context(session)):
+        purged = await _purge_connector_async(workspace_id, connector_id)
+
+    assert purged is True
+    assert connector_row.disconnected_at is not None
+    assert connector_row.sync_status == "not_synced"
+    assert session.execute.call_count == 3
