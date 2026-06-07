@@ -407,17 +407,24 @@ async def handle_confirm_purge_connector(ack, body, client):
     try:
         from sqlalchemy import select
 
+        from relay.auth import require_relay_admin
         from relay.db.models import Workspace
         from relay.db.session import get_session
         from relay.worker.connector_tasks import purge_connector
 
-        async with get_session() as session:
-            result = await session.execute(
+        async with get_session() as unscoped:
+            result = await unscoped.execute(
                 select(Workspace).where(Workspace.slack_team_id == team_id)
             )
             workspace = result.scalar_one_or_none()
             if workspace is None:
                 return
+
+        async with get_session(workspace_id=workspace.id) as auth_session:
+            is_admin = await require_relay_admin(auth_session, workspace.id, user_id)
+
+        if not is_admin:
+            return
 
         purge_connector.delay(str(workspace.id), str(connector_id))
         if user_id:

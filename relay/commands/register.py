@@ -173,6 +173,18 @@ async def handle_register(ack, respond, command, client=None) -> None:
                 await respond(response_type="ephemeral", text="RELAY is not installed for this workspace yet.")
                 return
 
+        from relay.auth import require_relay_admin
+        async with get_session(workspace_id=workspace.id) as auth_session:
+            is_admin = await require_relay_admin(
+                auth_session, workspace.id, command.get("user_id", "")
+            )
+        if not is_admin:
+            await respond(
+                response_type="ephemeral",
+                text=":no_entry: Only workspace admins can register channels.",
+            )
+            return
+
         customer_team_id, is_ext_shared = await _fetch_channel_metadata(client, channel_id, slack_team_id)
 
         async with get_session(workspace_id=workspace.id) as session:

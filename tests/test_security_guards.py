@@ -101,3 +101,51 @@ async def test_delete_workspace_allowed_for_admin():
 
     client.views_open.assert_called_once()
     respond.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Register channel guards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_rejected_for_non_admin():
+    """Non-admin user gets ephemeral error; no DB writes."""
+    from relay.commands.register import handle_register
+
+    ack = AsyncMock()
+    respond = AsyncMock()
+
+    mock_workspace = MagicMock()
+    mock_workspace.id = uuid.uuid4()
+
+    def fake_get_session(workspace_id=None):
+        @asynccontextmanager
+        async def _cm():
+            session = AsyncMock()
+            if workspace_id is None:
+                ws_result = MagicMock()
+                ws_result.scalar_one_or_none.return_value = mock_workspace
+                session.execute = AsyncMock(return_value=ws_result)
+            else:
+                auth_result = MagicMock()
+                auth_result.scalar_one_or_none.return_value = None  # not admin
+                session.execute = AsyncMock(return_value=auth_result)
+            yield session
+
+        return _cm()
+
+    with patch("relay.commands.register.get_session", side_effect=fake_get_session):
+        await handle_register(
+            ack=ack,
+            respond=respond,
+            command={
+                "text": "register <#C123|acme> Acme Corp enterprise",
+                "user_id": "U_VIEWER",
+                "team_id": "T_TEAM",
+            },
+        )
+
+    respond.assert_called_once()
+    text = respond.call_args.kwargs.get("text", "")
+    assert "admin" in text.lower()
