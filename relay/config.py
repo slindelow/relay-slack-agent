@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     app_base_url: str
     environment: str = "development"
     sentry_dsn: str = ""
+    kms_provider: str = "none"
+    kms_key_id: str = ""
 
     # HubSpot OAuth (optional — defaults to "" so existing tests don't break)
     hubspot_client_id: str = ""

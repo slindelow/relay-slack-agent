@@ -19,6 +19,7 @@ dependencies = [
     "aiohttp>=3.12",
     "python-dotenv>=1.0",
     "sentry-sdk[celery,fastapi]>=2.0",
+    "boto3>=1.34",
     # Plan 4 — source connectors + embedding pipeline
     "tiktoken>=0.7",
     "voyageai>=0.3",

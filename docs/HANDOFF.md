@@ -39,6 +39,34 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 KMS envelope foundation)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-001 foundation implemented locally. Full suite green: 225 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0008_plan7_kms.py` with `workspaces.wrapped_dek` and `workspaces.kms_key_id`.
+- Added KMS provider abstraction, AWS KMS implementation, `generate_dek`, `wrap_dek`, `unwrap_dek`, `ensure_workspace_dek`, and fallback key resolution.
+- Added config fields `KMS_PROVIDER` and `KMS_KEY_ID`, plus `boto3` dependency.
+- Wired Slack bot token, HubSpot token, GitHub connector credential, Google Drive credential, SLA poller, and HubSpot worker encryption/decryption paths to use workspace DEKs when KMS is configured, with global-key fallback for existing rows.
+- Added mocked KMS roundtrip/fallback tests and workspace model coverage.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_crypto.py tests/test_config.py tests/test_models.py -q` — 38 passed.
+- `.venv/bin/python -m pytest tests/test_github_connector.py tests/test_google_drive_connector.py tests/test_hubspot.py tests/test_oauth.py -q` — 18 passed, 9 skipped.
+- `.venv/bin/python -m pytest -q` — 225 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — renders through `0008_plan7_kms`.
+- `git diff --check` — passed.
+
+Remaining for US-001:
+- Add offline re-encryption script for existing global-key-encrypted rows.
+- Decide/confirm production KMS provider and IAM deployment details.
+
+Next recommended Plan 7 steps:
+1. Individual user erasure endpoint.
+2. Reviewer sandbox seed and walkthrough.
+3. KMS re-encryption script.
+
 ### Codex — 2026-06-07 (Plan 7 connector purge)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-003 complete locally. Full suite green: 221 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

@@ -18,8 +18,8 @@ from sqlalchemy import select
 from relay.connectors.base import Connector
 from relay.connectors.chunking import chunk_text
 from relay.connectors.embeddings import embed_chunks
-from relay.crypto import decrypt_token
-from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument
+from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
+from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument, Workspace
 from relay.db.session import get_session
 from relay.config import get_settings
 
@@ -47,8 +47,6 @@ class GoogleDriveConnector(Connector):
         from relay.config import get_settings
 
         settings = get_settings()
-        key_bytes = settings.token_encryption_key_bytes
-
         async with get_session(workspace_id) as session:
             result = await session.execute(
                 select(SourceConnector).where(
@@ -61,6 +59,13 @@ class GoogleDriveConnector(Connector):
             connector_row = result.scalar_one_or_none()
             if connector_row is None:
                 return
+
+            key_bytes = settings.token_encryption_key_bytes
+            kms_provider = kms_provider_from_settings(settings)
+            if kms_provider is not None:
+                workspace_result = await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+                workspace = workspace_result.scalar_one()
+                key_bytes = workspace_encryption_key(workspace, key_bytes, kms_provider)
 
             credentials_json = decrypt_token(
                 connector_row.encrypted_credentials,
