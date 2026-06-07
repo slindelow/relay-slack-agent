@@ -71,3 +71,24 @@ async def test_embed_chunks_empty_input():
     ids = await embed_chunks(uuid.uuid4(), [], None, None, session)
     assert ids == []
     session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_embed_chunks_can_attach_to_knowledge_entry():
+    session = _make_session()
+    workspace_id = uuid.uuid4()
+    knowledge_entry_id = uuid.uuid4()
+
+    with patch("relay.connectors.embeddings._get_embeddings", new=AsyncMock(return_value=[FAKE_VECTOR])):
+        await embed_chunks(
+            workspace_id,
+            ["approved answer"],
+            None,
+            None,
+            session,
+            knowledge_entry_id=knowledge_entry_id,
+        )
+
+    row = session.add.call_args.args[0]
+    assert row.source_document_id is None
+    assert row.knowledge_entry_id == knowledge_entry_id

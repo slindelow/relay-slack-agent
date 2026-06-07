@@ -39,6 +39,111 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-06 (Plan 6 `/relay pulse`)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-008 complete. Plan 6 implementation is complete on this branch. Full suite green: 209 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `/relay pulse [account-name]` handler with no-arg top account summary and named-account detailed pulse.
+- Summary shows top accounts by open question count with tier, ARR, renewal proximity, and owner/backup context.
+- Detail view shows open questions, 30-day SLA met rate, last resolved question date, renewal, tier, ARR, and backup owner when the primary owner is OOO.
+- Registered pulse routing in `/relay` and updated help copy.
+- Added unit coverage for summary blocks, detail blocks, not-found behavior, and handler summary response.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_pulse_command.py -q` — 5 passed.
+- `.venv/bin/python -m pytest -q` — 209 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended step:
+1. Do a final Plan 6 review pass, then open/merge PR for `claude/plan-6-feedback-memory`.
+2. Start Plan 7 marketplace readiness after Plan 6 lands.
+
+### Codex — 2026-06-06 (Plan 6 feedback export endpoint)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-007 complete. Full suite green: 204 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `GET /relay/admin/feedback-export` returning workspace-scoped feedback signals as `application/x-ndjson`.
+- Authenticates `Authorization: Bearer <token>` through Slack `auth.test`, resolves workspace by `team_id`, and requires local `User.relay_role == "admin"`.
+- Supports `?days=` with max 90-day clamp and sets an attachment filename.
+- Added unit tests for non-admin 403 and admin JSONL output.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_feedback_export.py tests/test_api.py -q` — 3 passed, 1 warning.
+- `.venv/bin/python -m pytest -q` — 204 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 step:
+1. Add `/relay pulse` account digest (US-008).
+
+### Codex — 2026-06-06 (Plan 6 App Home accuracy review)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-006 complete. Full suite green: 202 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Accuracy` section fed by rolling 7-day `FeedbackSignal` rows and total question count.
+- Renders `mark_not_question` correction count, classification accuracy, no-corrections empty state, and an `Export feedback` link button.
+- `publish_app_home` now queries tenant-scoped feedback rows and question counts, and builds the export URL from `APP_BASE_URL`.
+- Added unit coverage for no-correction and populated accuracy states.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_home.py -q` — 10 passed.
+- `.venv/bin/python -m pytest -q` — 202 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 steps:
+1. Add admin feedback export endpoint (US-007).
+2. Add `/relay pulse` account digest (US-008).
+
+### Codex — 2026-06-06 (Plan 6 App Home impact metrics)
+Branch: `claude/plan-6-feedback-memory`
+Status: US-005 complete. Full suite green: 200 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added App Home `Impact` section fed by rolling 30-day `ImpactMetric` rows.
+- `build_home()` now accepts `impact_rows` and renders SLA met rate, draft accepted rate, median time to send, and total questions handled.
+- `publish_app_home` queries tenant-scoped impact metrics for the installed Slack workspace and degrades gracefully if unavailable.
+- Added unit coverage for empty-state and populated impact metrics rendering.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_home.py -q` — 8 passed.
+- `.venv/bin/python -m pytest -q` — 200 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 6 steps:
+1. Build App Home accuracy/feedback review (US-006).
+2. Add admin feedback export endpoint (US-007).
+3. Add `/relay pulse` account digest (US-008).
+
+### Codex — 2026-06-06 (Plan 6 review + memory/ask slice)
+Branch: `claude/plan-6-feedback-memory`
+Status: Plan 5 is merged on `origin/main`; this branch is Plan 6 work on top of it. Full suite green: 193 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Reviewed Claude's Plan 6 US-001 migration/model work. Fixed the `KnowledgeEntry` ORM metadata to match the migration's tenant-scoped composite FK (`workspace_id`, `question_id`) and restored the migration after a single-column FK drift. Removed composite `ON DELETE SET NULL` on the knowledge-chunk-to-entry FK because `workspace_id` is non-null.
+- Added `relay/drafting/memory.py` with `index_approved_response()`: creates `KnowledgeEntry`, summarizes with Haiku behind a safe fallback, and embeds the approved Q+A as a `KnowledgeChunk` with `knowledge_entry_id`.
+- Wired `relay_send_draft` to index approved/sent responses after `ImpactMetric` write.
+- Extended `embed_chunks()` with a keyword-only `knowledge_entry_id` path and validation that a chunk belongs to either a source document or a memory entry, not both.
+- Updated retrieval so memory chunks cite as `provider="relay_memory"`, increment `KnowledgeEntry.reuse_count`, and win ties against docs at equal semantic distance.
+- Added `/relay ask <question>` handler and top-level `/relay` routing. It resolves workspace by Slack team, runs tenant-scoped retrieval, and returns ephemeral Block Kit source results.
+
+Tests/verification:
+- `.venv/bin/python -m pytest -q` — 193 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic heads` — `0006_plan6_memory (head)`.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — renders through Plan 6.
+
+Next recommended Plan 6 steps:
+1. Build App Home impact metrics section (US-005).
+2. Build App Home accuracy/feedback review (US-006).
+3. Add admin feedback export endpoint (US-007).
+4. Add `/relay pulse` account digest (US-008).
+
 ### Claude — 2026-06-05 (Plans 4 + 5 — connectors, drafting, approval)
 Branch (Plan 4): `claude/plan-4-connectors-v2` → **merged to main as PR #12**
 Branch (Plan 5): `claude/plan-5-clean` → PR #13 open, CI pending

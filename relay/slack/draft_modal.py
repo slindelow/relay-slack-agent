@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from relay.utils.formatting import renewal_proximity
+
 
 def _confidence_badge(confidence: float | None) -> str:
     if confidence is None:
@@ -14,22 +16,6 @@ def _confidence_badge(confidence: float | None) -> str:
     if confidence >= 0.5:
         return ":large_yellow_circle: medium confidence"
     return ":red_circle: low confidence"
-
-
-def _renewal_proximity(renewal_date_iso: str | None) -> str:
-    if not renewal_date_iso:
-        return "N/A"
-    try:
-        from datetime import date
-        renewal = date.fromisoformat(renewal_date_iso)
-        days = (renewal - date.today()).days
-        if days < 0:
-            return f"OVERDUE ({abs(days)}d ago)"
-        if days <= 30:
-            return f":warning: {days}d away"
-        return f"{days}d away"
-    except Exception:
-        return renewal_date_iso
 
 
 def build_draft_modal(
@@ -58,7 +44,7 @@ def build_draft_modal(
         arr = f"${float(account_row.arr):,.0f}" if account_row.arr else "N/A"
         bundle = draft_row.evidence_bundle or {}
         ctx = bundle.get("account_context", {})
-        renewal_str = _renewal_proximity(ctx.get("renewal_date"))
+        renewal_str = renewal_proximity(ctx.get("renewal_date"))
         blocks.append({
             "type": "section",
             "text": {

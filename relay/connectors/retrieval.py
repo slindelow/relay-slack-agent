@@ -9,11 +9,11 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.connectors.embeddings import _get_embeddings
-from relay.db.models import KnowledgeChunk, RetrievalLog
+from relay.db.models import KnowledgeEntry, RetrievalLog
 
 
 @dataclass
@@ -55,7 +55,10 @@ async def retrieve(
         SELECT id, source_document_id, knowledge_entry_id, content, embedding_model, embedding_dims
         FROM knowledge_chunks
         WHERE workspace_id = :wid
-        ORDER BY embedding <=> CAST(:qvec AS vector)
+        ORDER BY
+            embedding <=> CAST(:qvec AS vector),
+            -- Tiebreak: prefer relay_memory chunks (prior approved answers) at equal cosine distance
+            CASE WHEN knowledge_entry_id IS NOT NULL THEN 0 ELSE 1 END
         LIMIT :k
         """
     )
@@ -69,10 +72,38 @@ async def retrieve(
     )
     rows = result.fetchall()
 
+    entry_ids = {row.knowledge_entry_id for row in rows if row.knowledge_entry_id is not None}
+    entries_by_id: dict[uuid.UUID, KnowledgeEntry] = {}
+    if entry_ids:
+        entry_result = await session.execute(
+            select(KnowledgeEntry).where(
+                KnowledgeEntry.workspace_id == workspace_id,
+                KnowledgeEntry.id.in_(entry_ids),
+            )
+        )
+        entries_by_id = {entry.id: entry for entry in entry_result.scalars().all()}
+
     chunks: list[RetrievedChunk] = []
     source_ids: list[str] = []
+    incremented_ids: set[uuid.UUID] = set()
 
     for row in rows:
+        citation = {}
+        if row.knowledge_entry_id is not None:
+            entry = entries_by_id.get(row.knowledge_entry_id)
+            if entry is not None:
+                if row.knowledge_entry_id not in incremented_ids:
+                    entry.reuse_count += 1
+                    incremented_ids.add(row.knowledge_entry_id)
+                citation = {
+                    "provider": "relay_memory",
+                    "title": entry.title,
+                    "url": None,
+                    "updated_at": entry.created_at.isoformat() if entry.created_at else None,
+                    "stale": False,
+                    "summary": entry.summary,
+                }
+
         chunk = RetrievedChunk(
             chunk_id=row.id,
             source_document_id=row.source_document_id,
@@ -80,7 +111,7 @@ async def retrieve(
             content=row.content,
             embedding_model=row.embedding_model,
             embedding_dims=row.embedding_dims,
-            citation={},
+            citation=citation,
         )
         chunks.append(chunk)
         source_ids.append(str(row.id))

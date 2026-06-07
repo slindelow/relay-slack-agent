@@ -96,7 +96,119 @@ def _draft_queue_blocks(questions_needing_draft: list[Any]) -> list[dict]:
     return blocks
 
 
-def build_home(connector_rows: list[Any], questions_needing_draft: list[Any] | None = None) -> list[dict]:
+def _format_duration(seconds: int | None) -> str:
+    if seconds is None:
+        return "n/a"
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m"
+
+
+def _rate(true_count: int, total_count: int) -> str:
+    if total_count == 0:
+        return "n/a"
+    return f"{(true_count / total_count) * 100:.1f}%"
+
+
+def _median(values: list[int]) -> int | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return round((ordered[mid - 1] + ordered[mid]) / 2)
+
+
+def _impact_blocks(impact_rows: list[Any]) -> list[dict]:
+    blocks: list[dict] = [
+        {"type": "divider"},
+        {"type": "header", "text": {"type": "plain_text", "text": "Impact"}},
+    ]
+
+    if not impact_rows:
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "No data yet — stats appear after your first sent response."},
+        })
+        return blocks
+
+    sla_values = [row.sla_met for row in impact_rows if row.sla_met is not None]
+    accepted_values = [row.draft_accepted for row in impact_rows if row.draft_accepted is not None]
+    send_times = [
+        row.time_to_send_seconds
+        for row in impact_rows
+        if row.time_to_send_seconds is not None
+    ]
+
+    sla_rate = _rate(sum(1 for value in sla_values if value), len(sla_values))
+    accepted_rate = _rate(sum(1 for value in accepted_values if value), len(accepted_values))
+    median_send = _format_duration(_median(send_times))
+
+    blocks.append({
+        "type": "section",
+        "fields": [
+            {"type": "mrkdwn", "text": f"*SLA met rate*\n{sla_rate}"},
+            {"type": "mrkdwn", "text": f"*Draft accepted rate*\n{accepted_rate}"},
+            {"type": "mrkdwn", "text": f"*Median time to send*\n{median_send}"},
+            {"type": "mrkdwn", "text": f"*Questions handled*\n{len(impact_rows)}"},
+        ],
+    })
+    return blocks
+
+
+def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url: str) -> list[dict]:
+    blocks: list[dict] = [
+        {"type": "divider"},
+        {"type": "header", "text": {"type": "plain_text", "text": "Accuracy"}},
+    ]
+
+    corrections = sum(1 for row in feedback_rows if row.correction_action == "mark_not_question")
+
+    button: dict[str, Any] = {
+        "type": "button",
+        "text": {"type": "plain_text", "text": "Export feedback"},
+        "action_id": "relay_export_feedback",
+    }
+    if export_url.startswith("https://") or export_url.startswith("http://"):
+        button["url"] = export_url
+
+    if corrections == 0:
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "No corrections this week — great accuracy!"},
+            "accessory": button,
+        })
+        return blocks
+
+    if total_questions == 0:
+        accuracy_pct = "n/a"
+    else:
+        accuracy = max(0.0, (total_questions - corrections) / total_questions * 100)
+        accuracy_pct = f"{accuracy:.1f}%"
+    blocks.append({
+        "type": "section",
+        "fields": [
+            {"type": "mrkdwn", "text": f"*Corrections this week*\n{corrections}"},
+            {"type": "mrkdwn", "text": f"*Classification accuracy*\n{accuracy_pct}"},
+        ],
+        "accessory": button,
+    })
+    return blocks
+
+
+def build_home(
+    connector_rows: list[Any],
+    questions_needing_draft: list[Any] | None = None,
+    impact_rows: list[Any] | None = None,
+    feedback_rows: list[Any] | None = None,
+    total_questions_7d: int = 0,
+    feedback_export_url: str = "",
+) -> list[dict]:
     """Return the full App Home block list given a list of SourceConnector rows."""
     base_blocks: list[dict] = [
         {"type": "header", "text": {"type": "plain_text", "text": "RELAY"}},
@@ -122,7 +234,13 @@ def build_home(connector_rows: list[Any], questions_needing_draft: list[Any] | N
         },
         {"type": "divider"},
     ]
-    return base_blocks + _connector_blocks(connector_rows) + _draft_queue_blocks(questions_needing_draft or [])
+    return (
+        base_blocks
+        + _connector_blocks(connector_rows)
+        + _draft_queue_blocks(questions_needing_draft or [])
+        + _impact_blocks(impact_rows or [])
+        + _accuracy_blocks(feedback_rows or [], total_questions_7d, feedback_export_url)
+    )
 
 
 @app.event("app_home_opened")
@@ -131,12 +249,21 @@ async def publish_app_home(event, client, body):
 
     connector_rows: list[Any] = []
     questions_needing_draft: list[Any] = []
+    impact_rows: list[Any] = []
+    feedback_rows: list[Any] = []
+    total_questions_7d = 0
+    feedback_export_url = ""
     if team_id:
         try:
-            from sqlalchemy import select
+            from datetime import timedelta
 
-            from relay.db.models import Draft, Question, QuestionState, SourceConnector, Workspace
+            from sqlalchemy import func, select
+
+            from relay.config import get_settings
+            from relay.db.models import Draft, FeedbackSignal, ImpactMetric, Question, QuestionState, SourceConnector, Workspace
             from relay.db.session import get_session
+
+            feedback_export_url = f"{get_settings().app_base_url}/relay/admin/feedback-export"
 
             async with get_session() as unscoped:
                 ws_result = await unscoped.execute(
@@ -167,10 +294,50 @@ async def publish_app_home(event, client, body):
                         ).limit(10)
                     )
                     questions_needing_draft = list(q_result.scalars())
+
+                    impact_result = await session.execute(
+                        select(ImpactMetric)
+                        .where(
+                            ImpactMetric.workspace_id == workspace.id,
+                            ImpactMetric.created_at >= datetime.now(UTC) - timedelta(days=30),
+                        )
+                        .order_by(ImpactMetric.created_at.desc())
+                        .limit(500)
+                    )
+                    impact_rows = list(impact_result.scalars())
+
+                    seven_days_ago = datetime.now(UTC) - timedelta(days=7)
+                    feedback_result = await session.execute(
+                        select(FeedbackSignal)
+                        .where(
+                            FeedbackSignal.workspace_id == workspace.id,
+                            FeedbackSignal.created_at >= seven_days_ago,
+                            FeedbackSignal.correction_action == "mark_not_question",
+                        )
+                        .limit(500)
+                    )
+                    feedback_rows = list(feedback_result.scalars())
+
+                    question_count_result = await session.execute(
+                        select(func.count())
+                        .select_from(Question)
+                        .where(
+                            Question.workspace_id == workspace.id,
+                            Question.created_at >= seven_days_ago,
+                        )
+                    )
+                    total_questions_7d = question_count_result.scalar_one()
         except Exception:
             pass  # Degrade gracefully — Home still renders without data
 
-    blocks = build_home(connector_rows, questions_needing_draft)
+    blocks = build_home(
+        connector_rows,
+        questions_needing_draft,
+        impact_rows,
+        feedback_rows,
+        total_questions_7d,
+        feedback_export_url,
+    )
     await client.views_publish(
         user_id=event["user"],
         view={"type": "home", "blocks": blocks},

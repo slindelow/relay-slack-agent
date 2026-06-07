@@ -49,6 +49,8 @@ async def embed_chunks(
     connector_id: uuid.UUID | None,
     source_document_id: uuid.UUID | None,
     session: AsyncSession,
+    *,
+    knowledge_entry_id: uuid.UUID | None = None,
 ) -> list[uuid.UUID]:
     """Embed text chunks and persist as KnowledgeChunk rows.
 
@@ -57,6 +59,8 @@ async def embed_chunks(
     """
     if not chunks:
         return []
+    if source_document_id is not None and knowledge_entry_id is not None:
+        raise ValueError("chunks can belong to a source document or knowledge entry, not both")
 
     settings = get_settings()
     provider = settings.embedding_provider.lower()
@@ -95,7 +99,7 @@ async def embed_chunks(
                 id=uuid.uuid4(),
                 workspace_id=workspace_id,
                 source_document_id=source_document_id,
-                knowledge_entry_id=None,
+                knowledge_entry_id=knowledge_entry_id,
                 chunk_index=idx,
                 content=chunks[idx],
                 embedding=vectors[pos],

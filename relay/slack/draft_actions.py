@@ -171,6 +171,7 @@ async def handle_send_draft(ack, body, client):
             Question, QuestionEvent, SlaPolicy, User,
         )
         from relay.db.session import get_session
+        from relay.drafting.memory import index_approved_response
         from relay.question.machine import resolve_question
 
         async with get_session(workspace_id) as session:
@@ -256,6 +257,16 @@ async def handle_send_draft(ack, body, client):
                     draft_accepted=True,
                     sla_met=sla_met,
                 ))
+                try:
+                    draft.customer_draft = response_body  # persist the final approved text
+                    await index_approved_response(
+                        workspace_id=workspace_id,
+                        question_id=question.id,
+                        draft_id=draft_id,
+                        session=session,
+                    )
+                except Exception:
+                    logger.warning("index_approved_response failed; response was sent", exc_info=True)
 
         # Notify CSM
         channel_name = f"<#{channel_id_slack}>" if channel_id_slack else "the customer channel"
@@ -407,3 +418,13 @@ async def handle_regenerate_draft(ack, body, client):
 
     except Exception:
         logger.exception("relay_regenerate_draft: error for draft %s", draft_id_str)
+
+
+# ---------------------------------------------------------------------------
+# Export feedback — no-op ack (URL handles the click; ack prevents Bolt warning)
+# ---------------------------------------------------------------------------
+
+
+@app.action("relay_export_feedback")
+async def handle_export_feedback_action(ack):
+    await ack()

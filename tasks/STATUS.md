@@ -4,25 +4,24 @@
 
 ---
 
-## Current State (as of 2026-06-05)
+## Current State (as of 2026-06-06)
 
 | Plan | Scope | Status | Where |
 |------|-------|--------|-------|
 | 1 — Foundation | DB schema, Slack OAuth, crypto, Celery, `/relay help` | ✅ Merged to main | PRs #1–3 |
 | 2 — CRM + Account Registry | HubSpot OAuth, channel registration, question machine, event ingestion | ✅ Complete (PRs #9, #10 pending merge) | PRs #4, #6, #7, #8, #9, #10 |
 | 3 — SLA Engine + Alerts | 60s poller, DM alert cards, claim/snooze/assign/mark-not-question | ✅ Complete (pending merge) | PR #11 |
-| 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | 🟡 Started — schema/ORM complete | Local branch |
-| 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ❌ Not started | — |
-| 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ❌ Not started | — |
+| 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
+| 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
+| 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
 | 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ❌ Not started | — |
 
 ---
 
 ## Immediate Next Steps
 
-1. **Merge PRs #9, #10, #11** (in that order) — gets to a clean Plan 3 baseline on main.
-2. **Continue Plan 4** — connector interface + chunking/embedding pipeline (see `tasks/prd-plan4-source-connectors.md`).
-3. Plans 5 → 6 → 7 follow in sequence.
+1. Final review Plan 6 branch and open/merge PR.
+2. Start Plan 7 Marketplace Readiness.
 
 ---
 
@@ -53,13 +52,20 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 
 ---
 
-## Known TODOs Before Plan 4 (non-blocking)
+## Known TODOs (non-blocking)
 
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py`
 - HubSpot company upsert — stubbed in `relay/worker/hubspot_tasks.py`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 
-## Plan 4 Progress
+## Plan 6 Progress
 
-- ✅ US-001: Added `0004_plan4_connectors.py`, `SourceConnector`, `SourceDocument`, `KnowledgeChunk`, and `RetrievalLog` with pgvector, RLS, same-workspace FKs, and model tests.
-- ⏭️ Next: US-002 connector interface + registry, then US-004 chunking and US-003 embedding pipeline.
+- ✅ US-001: Added `0006_plan6_memory.py` and `KnowledgeEntry`; Codex fixed ORM/migration FK drift so tenant-scoped metadata matches Alembic.
+- ✅ US-002: Added `index_approved_response()` and wired sent drafts into resolution memory indexing.
+- ✅ US-003: Retrieval cites memory chunks as `relay_memory` and increments `reuse_count`.
+- ✅ US-004: Added `/relay ask <question>` routing and ephemeral source results.
+- ✅ US-005: Added App Home impact metrics section with 30-day SLA met rate, draft accepted rate, median time to send, and total handled count.
+- ✅ US-006: Added App Home accuracy section with 7-day correction count, classification accuracy, and feedback export link.
+- ✅ US-007: Added admin feedback export endpoint with Slack auth.test, admin role check, JSONL streaming, and day-window clamp.
+- ✅ US-008: Added `/relay pulse [account]` account digest with summary and detailed Block Kit responses.
+- ⏭️ Next: Plan 6 final review, then Plan 7 marketplace readiness.
