@@ -105,7 +105,7 @@ def test_build_home_with_questions_needing_draft():
     """build_home() with questions_needing_draft shows Generate draft buttons."""
     from relay.slack.home import build_home
 
-    q = SimpleNamespace(id=uuid.uuid4(), body="Customer asked about outage")
+    q = SimpleNamespace(id=uuid.uuid4(), title_excerpt="Customer asked about outage")
     blocks = build_home(connector_rows=[], questions_needing_draft=[q])
 
     all_text = json.dumps(blocks)

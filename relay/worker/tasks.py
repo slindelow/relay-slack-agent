@@ -32,7 +32,10 @@ async def _process_slack_event_async(payload: dict) -> None:
 
     settings = get_settings()
 
-    team_id = payload["team_id"]
+    team_id = payload.get("team_id", "")
+    if not team_id:
+        logger.warning("process_slack_event: missing team_id in payload, skipping")
+        return
     slack_channel_id = payload["channel_id"]
     ts = payload["ts"]
     sender_team_id = payload.get("team", team_id)

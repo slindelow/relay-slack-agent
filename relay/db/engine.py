@@ -28,3 +28,5 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
         )
     return _session_factory
 
+
+async_engine = get_engine()

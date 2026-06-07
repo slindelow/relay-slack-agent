@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from relay.slack.app import app
+
+logger = logging.getLogger(__name__)
 
 _CONNECTOR_ICONS = {
     "google_drive": ":page_facing_up:",
@@ -94,7 +97,7 @@ def _draft_queue_blocks(questions_needing_draft: list[Any]) -> list[dict]:
         {"type": "header", "text": {"type": "plain_text", "text": "Questions Needing Drafts"}},
     ]
     for q in questions_needing_draft:
-        body_excerpt = (q.body or "")[:120]
+        body_excerpt = (q.title_excerpt or "")[:120]
         blocks.append({
             "type": "section",
             "text": {"type": "mrkdwn", "text": f":speech_balloon: _{body_excerpt}…_"},
@@ -340,7 +343,7 @@ async def publish_app_home(event, client, body):
                     )
                     total_questions_7d = question_count_result.scalar_one()
         except Exception:
-            pass  # Degrade gracefully — Home still renders without data
+            logger.warning("publish_app_home: failed to render for user %s", event.get("user", "unknown"), exc_info=True)
 
     blocks = build_home(
         connector_rows,
