@@ -606,7 +606,6 @@ class KnowledgeChunk(Base):
             ["workspace_id", "knowledge_entry_id"],
             ["knowledge_entries.workspace_id", "knowledge_entries.id"],
             name="fk_knowledge_chunk_entry_same_workspace",
-            ondelete="SET NULL",
         ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_chunk_workspace_id"),
         UniqueConstraint("workspace_id", "content_hash", name="uq_knowledge_chunk_content_hash"),
@@ -807,11 +806,7 @@ class KnowledgeEntry(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
-    question_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("questions.id", ondelete="SET NULL", name="fk_knowledge_entry_question"),
-        nullable=True,
-    )
+    question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     customer_question: Mapped[str] = mapped_column(Text, nullable=False)
@@ -821,6 +816,11 @@ class KnowledgeEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            name="fk_knowledge_entry_question_same_workspace",
+        ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_entry_workspace_id"),
         Index("idx_knowledge_entries_workspace_created", "workspace_id", "created_at"),
     )

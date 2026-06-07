@@ -50,10 +50,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["question_id"],
-            ["questions.id"],
-            ondelete="SET NULL",
-            name="fk_knowledge_entry_question",
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            name="fk_knowledge_entry_question_same_workspace",
         ),
         sa.UniqueConstraint("workspace_id", "id", name="uq_knowledge_entry_workspace_id"),
     )
@@ -71,7 +70,6 @@ def upgrade() -> None:
         "knowledge_entries",
         ["workspace_id", "knowledge_entry_id"],
         ["workspace_id", "id"],
-        ondelete="SET NULL",
     )
 
     # Add missing recency indexes on tables created in 0005

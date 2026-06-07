@@ -285,7 +285,7 @@ def test_plan6_knowledge_entry_has_resolution_memory_fields():
     }.issubset(cols)
     constraint_names = {constraint.name for constraint in KnowledgeEntry.__table__.constraints}
     assert {
-        "fk_knowledge_entry_question",
+        "fk_knowledge_entry_question_same_workspace",
         "uq_knowledge_entry_workspace_id",
     }.issubset(constraint_names)
 
