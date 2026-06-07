@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     google_drive_credentials_json: str = ""
     github_token: str = ""
 
+    # Plan 7 — KMS / deletion / legal / monitoring
+    kms_provider: str = "local"  # "local" (dev/test) or "aws"
+    kms_key_id: str = ""  # AWS KMS key ARN or alias; empty = local provider
+    # Deprecated: use per-workspace DEK instead of global key when kms_key_id is set
+    sentry_dsn: str = ""
+    erasure_secret: str = ""  # sha256 confirmation for GDPR user erasure
+    relay_contact_email: str = "privacy@relay.app"
+
     @field_validator("token_encryption_key")
     @classmethod
     def validate_key(cls, value: str) -> str:

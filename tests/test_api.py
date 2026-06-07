@@ -17,5 +17,10 @@ def test_health_endpoint(monkeypatch):
 
     response = client.get("/health")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "relay"}
+    # 200 (ok) or 503 (degraded) — no real DB/Redis in unit tests
+    assert response.status_code in (200, 503)
+    body = response.json()
+    assert body["status"] in ("ok", "degraded")
+    assert "db" in body
+    assert "redis" in body
+    assert "version" in body

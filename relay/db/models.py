@@ -68,6 +68,9 @@ class Workspace(Base):
     installed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Plan 7 — envelope encryption: per-workspace DEK wrapped by KMS master key
+    wrapped_dek: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    kms_key_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
     tokens: Mapped[list["WorkspaceToken"]] = relationship(back_populates="workspace", cascade="all, delete-orphan")
     settings: Mapped["WorkspaceSettings | None"] = relationship(back_populates="workspace", uselist=False, cascade="all, delete-orphan")
@@ -145,6 +148,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     relay_role: Mapped[str] = mapped_column(String(32), nullable=False, default="viewer")
     is_ooo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -829,3 +833,25 @@ class KnowledgeEntry(Base):
     workspace: Mapped[Workspace] = relationship(back_populates="knowledge_entries", overlaps="workspace")
     question: Mapped["Question | None"] = relationship(back_populates="knowledge_entries", foreign_keys=[question_id], overlaps="workspace")
     chunks: Mapped[list["KnowledgeChunk"]] = relationship(back_populates="knowledge_entry", foreign_keys="[KnowledgeChunk.workspace_id, KnowledgeChunk.knowledge_entry_id]", overlaps="chunks,source_document,workspace")
+
+
+# ---------------------------------------------------------------------------
+# Plan 7 models
+# ---------------------------------------------------------------------------
+
+class WorkspaceDeletionJobStatus(str, enum.Enum):
+    pending = "pending"
+    complete = "complete"
+    failed = "failed"
+
+
+class WorkspaceDeletionJob(Base):
+    __tablename__ = "workspace_deletion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[WorkspaceDeletionJobStatus] = mapped_column(
+        String(16), nullable=False, default=WorkspaceDeletionJobStatus.pending
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,5 +1,6 @@
 """FastAPI app mounting Slack Bolt."""
 
+import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
@@ -9,10 +10,10 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from relay.config import get_settings
-from relay.db.models import FeedbackSignal, User, Workspace
+from relay.db.models import AuditLog, FeedbackSignal, QuestionEvent, User, Workspace
 from relay.db.session import get_session
 from relay.integrations.hubspot import (
     HubSpotOAuthError,
@@ -29,10 +30,168 @@ logger = logging.getLogger(__name__)
 api = FastAPI(title="RELAY", version="0.1.0")
 handler = AsyncSlackRequestHandler(bolt_app)
 
+from relay.api.legal import router as legal_router  # noqa: E402
+api.include_router(legal_router)
+
+# Sentry — only initialised when SENTRY_DSN is configured
+_settings_for_sentry = get_settings()
+if _settings_for_sentry.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=_settings_for_sentry.sentry_dsn,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        traces_sample_rate=0.1,
+    )
+
 
 @api.get("/health")
 async def health():
-    return {"status": "ok", "service": "relay"}
+    import asyncio
+    import importlib.metadata
+
+    db_status = "ok"
+    redis_status = "ok"
+
+    # DB check — SELECT 1 with 2s timeout
+    try:
+        from relay.db.engine import async_engine
+        from sqlalchemy import text as sa_text
+
+        async def _db_ping():
+            async with async_engine.connect() as conn:
+                await conn.execute(sa_text("SELECT 1"))
+
+        await asyncio.wait_for(_db_ping(), timeout=2.0)
+    except Exception:
+        db_status = "error"
+
+    # Redis check — PING with 1s timeout
+    try:
+        import redis.asyncio as aioredis
+
+        async def _redis_ping():
+            r = await aioredis.from_url(get_settings().redis_url, socket_connect_timeout=1)
+            await r.ping()
+            await r.aclose()
+
+        await asyncio.wait_for(_redis_ping(), timeout=1.0)
+    except Exception:
+        redis_status = "error"
+
+    try:
+        version = importlib.metadata.version("relay")
+    except Exception:
+        version = "0.1.0"
+
+    status = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
+    payload = {"status": status, "db": db_status, "redis": redis_status, "version": version}
+    if status != "ok":
+        from fastapi.responses import JSONResponse as _JSONResponse
+        return _JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+@api.delete("/relay/admin/users/{slack_user_id}/erase")
+async def erase_user(
+    slack_user_id: str,
+    authorization: str = Header(default=""),
+    confirmation_token: str = Query(default=""),
+):
+    """GDPR Art. 17 — nullify PII for a specific user. Requires admin role."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+
+    settings = get_settings()
+
+    # Validate confirmation token: sha256(slack_user_id + erasure_secret)
+    expected = hashlib.sha256(
+        (slack_user_id + settings.erasure_secret).encode()
+    ).hexdigest()
+    if confirmation_token != expected:
+        raise HTTPException(status_code=400, detail="invalid confirmation_token")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    auth = await _slack_auth_test(token)
+    slack_team_id = auth.get("team_id")
+    admin_slack_user_id = auth.get("user_id")
+
+    async with get_session() as session:
+        ws_result = await session.execute(
+            select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+        )
+        workspace = ws_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    async with get_session(workspace.id) as session:
+        # Verify requesting user is admin
+        admin_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == admin_slack_user_id,
+            )
+        )
+        admin = admin_result.scalar_one_or_none()
+        if admin is None or admin.relay_role != "admin":
+            raise HTTPException(status_code=403, detail="admin role required")
+
+        # Load target user
+        target_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == slack_user_id,
+            )
+        )
+        target = target_result.scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        target_user_id = target.id
+
+        # Nullify PII on users row
+        await session.execute(
+            update(User)
+            .where(User.id == target_user_id, User.workspace_id == workspace.id)
+            .values(display_name=None, email=None, deleted_at=datetime.now(UTC))
+        )
+
+        # Nullify audit_log actor fields for this user
+        await session.execute(
+            update(AuditLog)
+            .where(
+                AuditLog.workspace_id == workspace.id,
+                AuditLog.actor_user_id == target_user_id,
+            )
+            .values(actor_user_id=None, actor_slack_user_id=None)
+        )
+
+        # Nullify question_events actor for this user
+        await session.execute(
+            update(QuestionEvent)
+            .where(
+                QuestionEvent.workspace_id == workspace.id,
+                QuestionEvent.actor_user_id == target_user_id,
+            )
+            .values(actor_user_id=None)
+        )
+
+        # Write erasure audit log
+        session.add(
+            AuditLog(
+                workspace_id=workspace.id,
+                actor_user_id=admin.id,
+                actor_slack_user_id=admin_slack_user_id,
+                event_type="user_erased",
+                entity_type="user",
+                entity_id=target_user_id,
+            )
+        )
+        await session.commit()
+
+    return {"erased": True, "user_id": slack_user_id}
 
 
 @api.post("/slack/events")

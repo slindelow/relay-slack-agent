@@ -1,151 +1,148 @@
 {
   "project": "RELAY",
-  "branchName": "claude/plan-6-feedback-memory",
-  "description": "Plan 6 — Feedback, Resolution Memory + Account Pulse. Turn approved responses into reusable knowledge entries, surface accuracy and impact metrics in App Home, add /relay ask (ad-hoc retrieval) and /relay pulse (account health digest), and ship admin feedback export.",
+  "branchName": "claude/plan-7-marketplace-readiness",
+  "description": "Plan 7 — Marketplace Readiness. KMS envelope encryption, workspace/user deletion flows, legal pages, scope justification, reviewer sandbox, and production monitoring.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add knowledge_entries migration and ORM model",
-      "description": "As a developer, I need the knowledge_entries table so resolution memory can be persisted and retrieved.",
+      "title": "Envelope encryption — KMS-wrapped DEK per workspace",
+      "description": "As a security engineer, I need each workspace's tokens encrypted with a per-workspace DEK wrapped by a cloud KMS master key.",
       "acceptanceCriteria": [
-        "Alembic migration 0006_plan6_memory.py",
-        "knowledge_entries table: id (UUID PK), workspace_id (FK workspaces.id CASCADE), question_id (UUID nullable FK questions.id), title (TEXT), summary (TEXT), customer_question (TEXT), internal_answer (TEXT), source_bundle (JSONB), reuse_count (INT default 0), created_at (TIMESTAMPTZ server_default now()); RLS ENABLE + FORCE",
-        "Index on knowledge_entries(workspace_id, created_at) for recency queries",
-        "Add indexes to impact_metrics(workspace_id, created_at) and feedback_signals(workspace_id, created_at, correction_action) if not present",
-        "ORM model KnowledgeEntry added to relay/db/models.py with workspace/question relationships and overlaps= silencing",
-        "alembic upgrade head runs cleanly on top of 0005",
+        "relay/crypto.py extended with generate_dek(), wrap_dek(dek, kms_client), unwrap_dek(wrapped_dek, kms_client) using a KMSProvider abstraction",
+        "Migration 0007_plan7_kms.py adds wrapped_dek (LargeBinary) and kms_key_id (String) columns to workspaces",
+        "WorkspaceToken, CrmConnection, SourceConnector encryption uses workspace DEK when wrapped_dek is set",
+        "Backward compat: if wrapped_dek is null, fall back to global TOKEN_ENCRYPTION_KEY",
+        "TOKEN_ENCRYPTION_KEY env var still accepted but marked deprecated in Settings",
+        "Unit tests: encrypt/decrypt roundtrip with mocked KMS; fallback path works",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "impact_metrics and feedback_signals tables were created in migration 0005. This migration adds knowledge_entries and the missing indexes. The knowledge_chunks table already has knowledge_entry_id UUID nullable column (added in 0004) — just add the FK constraint here."
+      "notes": "Use a KMSProvider abstract base class with a LocalKMSProvider (for tests/dev) that wraps with AES-256 using a local key. Production will use AWS KMS (boto3). The LocalKMSProvider is sufficient for unit tests and CI."
     },
     {
       "id": "US-002",
-      "title": "Index approved responses as knowledge_entries",
-      "description": "As a developer, I want every sent response to create a knowledge_entry so future drafts can cite prior answers.",
+      "title": "Workspace deletion flow",
+      "description": "As a Marketplace reviewer, I need to verify that uninstalling RELAY completely removes all workspace data.",
       "acceptanceCriteria": [
-        "relay/drafting/memory.py implements async index_approved_response(workspace_id, question_id, draft_id, session) -> KnowledgeEntry",
-        "Reads question (title_excerpt, channel_id), resolves account_id via MonitoredChannel, reads draft (customer_draft, internal_brief, evidence_bundle)",
-        "Creates KnowledgeEntry: customer_question=question.title_excerpt, internal_answer=draft.customer_draft, source_bundle=draft.evidence_bundle, title=account_name + ' — ' + question.title_excerpt[:80]",
-        "Generates one-sentence summary using claude-haiku-4-5-20251001 (Haiku) with a simple 'Summarize in one sentence:' prompt",
-        "Embeds customer_question + '\\n\\n' + internal_answer via embed_chunks(), stores KnowledgeChunk with knowledge_entry_id set and source_document_id=None",
-        "Called from relay_send_draft handler after the response is posted (after ImpactMetric write)",
-        "Unit tests in tests/test_memory.py: verify KnowledgeEntry created, chunk embedded with correct knowledge_entry_id, summary is a non-empty string",
+        "relay/commands/delete.py implements handle_delete_workspace(ack, client, command, respond) Bolt slash-command handler",
+        "Shows confirmation modal: 'This will permanently delete all RELAY data for your workspace. This cannot be undone.'",
+        "On modal submission: enqueues delete_workspace_data(workspace_id) Celery task",
+        "Migration 0007 adds workspace_deletion_jobs table: id, workspace_id, status (pending/complete/failed), started_at, completed_at",
+        "delete_workspace_data task deletes in cascade order per PRD spec",
+        "Writes audit_log entry event_type=workspace_deleted before workspace row is deleted",
+        "On app_uninstalled Slack event: sets workspace_tokens.is_revoked=True and enqueues deletion job",
+        "relay/commands/help.py routes delete-workspace-data subcommand",
+        "Unit tests: modal structure correct, deletion task called with correct workspace_id",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "embed_chunks() from relay.connectors.embeddings takes (workspace_id, chunks, connector_id, source_document_id, session). For knowledge entries: pass connector_id=None and source_document_id=None. Haiku model ID: claude-haiku-4-5-20251001. Keep the summary prompt minimal."
+      "notes": "The cascade delete uses explicit DELETE queries in dependency order (not Postgres CASCADE) so each step can be logged. Use the existing async session pattern. Check if audit_log table exists or needs to be added in migration 0007."
     },
     {
       "id": "US-003",
-      "title": "Retrieval cites knowledge_entry chunks",
-      "description": "As a developer, I want retrieve() to surface prior approved answers as evidence with correct citation metadata.",
+      "title": "Connector-level purge",
+      "description": "As an admin, I want to disconnect a source connector and purge all derived knowledge.",
       "acceptanceCriteria": [
-        "relay/connectors/retrieval.py citation output for chunks where knowledge_entry_id IS NOT NULL includes: provider='relay_memory', title from KnowledgeEntry.title, url=None",
-        "KnowledgeEntry.reuse_count incremented by 1 each time a chunk from that entry is included in a retrieval result",
-        "Unit test in tests/test_retrieval.py: create a KnowledgeChunk with knowledge_entry_id set, call retrieve(), verify citation has provider='relay_memory' and reuse_count incremented",
+        "relay/slack/settings.py shows a settings view with a Disconnect + Purge button per connected source connector",
+        "relay_disconnect_connector action handler shows confirmation modal per connector",
+        "On confirm: deletes knowledge_chunks and source_documents for that connector",
+        "Sets source_connectors.disconnected_at = now()",
+        "Responds ephemeral: '{provider} disconnected. All indexed content removed.'",
+        "Unit test: purge deletes chunks and documents, sets disconnected_at",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "The current retrieve() in retrieval.py returns RetrievedChunk with citation={}. To populate citation for knowledge_entry chunks, do a secondary lookup: after fetching chunks, load KnowledgeEntry rows for any chunk that has knowledge_entry_id set, then build citation from the KnowledgeEntry. Use a single SELECT IN query to avoid N+1."
+      "notes": "Add a relay_settings slash command or action that opens a settings view. The purge logic can be a standalone async function in relay/connectors/base.py."
     },
     {
       "id": "US-004",
-      "title": "/relay ask slash command — ad-hoc retrieval",
-      "description": "As a CSM, I want to run /relay ask <text> to get immediate evidence retrieval without a full question workflow.",
+      "title": "Individual user erasure (GDPR Art. 17)",
+      "description": "As a data protection officer, I need to erase all data associated with a specific user on request.",
       "acceptanceCriteria": [
-        "relay/commands/ask.py implements handle_ask(ack, respond, command) Bolt handler",
-        "Parses query from command['text'] after stripping 'ask' prefix",
-        "If query empty: ephemeral 'Usage: /relay ask <your question>'",
-        "Resolves workspace_id from command['team_id']",
-        "Calls retrieve(workspace_id, query, session, top_k=5) inside a workspace-scoped session",
-        "Responds ephemeral with Block Kit sections: one per source (title, provider badge, URL link if available, excerpt truncated to 150 chars, freshness)",
-        "If zero results: 'No relevant sources found in connected knowledge base.'",
-        "relay/commands/help.py registers 'ask' subcommand",
-        "relay/slack/app.py (or relay/commands/__init__.py) imports the ask handler",
-        "Unit tests in tests/test_ask_command.py: empty query returns usage hint, with results returns formatted blocks, zero results returns no-sources message",
+        "DELETE /relay/admin/users/{slack_user_id}/erase FastAPI endpoint in relay/api/admin.py",
+        "Requires relay_role=admin (same Bearer auth as feedback-export) and confirmation_token query param = sha256(slack_user_id + ERASURE_SECRET)",
+        "Nullifies PII: users.display_name=null, users.email=null, sets users.deleted_at",
+        "Nullifies actor_slack_user_id and actor_user_id on audit_log rows for this user",
+        "Nullifies actor_user_id on question_events for this user",
+        "Writes audit_log entry event_type=user_erased with admin actor",
+        "Does NOT delete questions, assignments, alerts",
+        "Returns 200 JSON {erased: true, user_id: slack_user_id}",
+        "Unit test: 403 without admin role, PII nullified for admin",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "The /relay command routes subcommands from command['text']. Currently handle_register is dispatched; add 'ask' routing. retrieve() is async — use asyncio.run() inside the Bolt sync handler OR ensure the Bolt app is fully async (it should be — use async def with await). Do NOT create Question/Alert/Draft rows."
+      "notes": "ERASURE_SECRET env var (default '') in Settings. sha256 confirmation prevents accidental mass erasure. Add ERASURE_SECRET to Settings as an optional field."
     },
     {
       "id": "US-005",
-      "title": "App Home — impact metrics section",
-      "description": "As an admin, I want to see RELAY's 30-day SLA met rate, draft acceptance rate, and time-to-send in the App Home.",
+      "title": "Privacy policy, ToS, and sub-processor disclosure pages",
+      "description": "As a Marketplace reviewer, I need public legal pages describing data collection, retention, and sub-processors.",
       "acceptanceCriteria": [
-        "relay/slack/home.py gains _impact_blocks(impact_rows) pure helper",
-        "Shows rolling 30-day stats computed from impact_metrics: SLA met rate (%), draft accepted rate (%), median time_to_send_seconds formatted as human-readable (e.g. '4m 32s'), total questions handled (COUNT(*) of impact_metrics rows)",
-        "If len(impact_rows) == 0: single section 'No data yet — stats appear after your first sent response.'",
-        "build_home() accepts optional impact_rows: list[Any] = None parameter; appends _impact_blocks(impact_rows or []) after connector blocks",
-        "publish_app_home handler queries SELECT * FROM impact_metrics WHERE workspace_id=? AND created_at >= now()-30d LIMIT 500 before calling build_home",
-        "Unit test: build_home() with sample impact rows returns blocks containing SLA rate and draft accepted rate",
+        "relay/api/legal.py FastAPI router with GET /privacy, GET /terms, GET /sub-processors",
+        "Each returns text/html with appropriate legal content",
+        "/privacy covers: data collected, retention, sub-processors, user rights, contact",
+        "/terms covers: service description, acceptable use, liability, termination",
+        "/sub-processors lists: Anthropic (ZDR/no training), embedding provider, hosting, Sentry",
+        "All routes accessible without authentication",
+        "Router registered in relay/api/app.py",
+        "Unit tests: all three routes return 200 non-empty HTML",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "SLA met rate = sum(sla_met) / count(sla_met IS NOT NULL). Draft accepted rate = sum(draft_accepted) / count(*). Median: sort time_to_send_seconds, take the middle value. All pure Python from the list of rows — no aggregation SQL needed."
+      "notes": "Plain HTML with minimal inline CSS. Use settings.relay_contact_email (default 'privacy@relay.app') for contact. Add relay_contact_email to Settings."
     },
     {
       "id": "US-006",
-      "title": "App Home — accuracy and feedback review section",
-      "description": "As an admin, I want a 7-day accuracy summary in App Home showing false-positive rate and mark_not_question corrections.",
+      "title": "Scope justification narrative",
+      "description": "As a Marketplace reviewer, I need written justification for every Slack OAuth scope RELAY requests.",
       "acceptanceCriteria": [
-        "relay/slack/home.py gains _accuracy_blocks(feedback_rows) pure helper",
-        "Shows rolling 7-day stats: correction count (correction_action='mark_not_question'), accuracy rate formula: (total_questions - corrections) / total_questions * 100%",
-        "Includes a 'Export feedback' button (action_id=relay_export_feedback, URL opens the feedback export endpoint)",
-        "If no feedback_rows: single section 'No corrections this week — great accuracy!'",
-        "build_home() accepts optional feedback_rows: list[Any] = None; appends _accuracy_blocks after impact blocks",
-        "publish_app_home queries SELECT * FROM feedback_signals WHERE workspace_id=? AND created_at >= now()-7d LIMIT 500",
-        "Also queries total questions in the same 7-day window: SELECT COUNT(*) FROM questions WHERE workspace_id=? AND created_at >= now()-7d",
-        "Unit test: _accuracy_blocks with 2 mark_not_question corrections and 20 total questions returns '90.0% accuracy'",
-        "Typecheck passes"
+        "docs/marketplace/scope-justification.md created",
+        "One paragraph per scope: groups:history, groups:read, channels:read, chat:write, im:write, users:read, commands",
+        "Each paragraph: data accessed, why needed, consequence of denial",
+        "Notes: no channels:history, connector scopes are optional",
+        "File committed to branch"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "The export button URL: {settings.app_base_url}/relay/admin/feedback-export — just a link button (type=button with url field). Bolt does not need to handle this action. Keep the accuracy calculation as simple integer math."
+      "notes": "Pure documentation. 2-3 sentences per scope."
     },
     {
       "id": "US-007",
-      "title": "Admin feedback export endpoint",
-      "description": "As an admin, I want to download this week's feedback signals as a JSONL file for classifier retraining.",
+      "title": "Reviewer sandbox seed script + walkthrough",
+      "description": "As a Slack Marketplace reviewer, I need a sandbox workspace pre-loaded with demo data.",
       "acceptanceCriteria": [
-        "relay/api/admin.py implements GET /relay/admin/feedback-export FastAPI endpoint",
-        "Accepts optional ?days=7 query param (default 7, max 90, clamped)",
-        "Requires Authorization: Bearer <slack_bot_token> header; resolves workspace from the token's team_id via the Slack API (auth.test)",
-        "Requires relay_role='admin' on the requesting user (looked up by slack_user_id from auth.test); returns HTTP 403 otherwise",
-        "Returns StreamingResponse with Content-Type: application/x-ndjson and Content-Disposition: attachment; filename=relay-feedback-{date}.jsonl",
-        "Each JSONL line: {workspace_id, question_id, draft_id, message_id, correction_action, original_label, corrected_label, original_confidence, notes, created_at} — all fields from the feedback_signals row",
-        "RLS enforced: endpoint only sees feedback_signals for the authenticated workspace",
-        "Unit test: mock Slack auth.test returning a team_id + user_id; verify 403 for non-admin; verify JSONL output for admin",
+        "scripts/seed_reviewer_sandbox.py creates: 1 workspace, 2 customer accounts, 2 monitored channels, 3 open questions (one past SLA, one snoozed, one claimed), 1 pending draft, 2 resolved questions with knowledge_entries",
+        "Idempotent: re-running resets sandbox (delete-and-recreate by workspace name)",
+        "docs/marketplace/reviewer-walkthrough.md documents step-by-step flow",
+        "Script accepts --database-url arg; falls back to DATABASE_URL env var",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "The FastAPI app is at relay/api/app.py. Add the admin router there. Use StreamingResponse with a generator that yields one JSON line per row. The Slack bot token for the workspace is in workspace_tokens — look it up by team_id. For auth.test call, use httpx.AsyncClient or the Slack SDK's WebClient."
+      "notes": "Use SQLAlchemy sync engine for simplicity. Walkthrough: 1-2 sentences per step with expected outputs."
     },
     {
       "id": "US-008",
-      "title": "/relay pulse slash command — account health digest",
-      "description": "As a CSM or manager, I want to run /relay pulse [account-name] to see open questions, SLA performance, and CRM signals for an account.",
+      "title": "Production monitoring — Sentry + /health checks",
+      "description": "As an operator, I need error tracking and uptime monitoring.",
       "acceptanceCriteria": [
-        "relay/commands/pulse.py implements handle_pulse(ack, respond, command) Bolt handler",
-        "With no argument: returns Block Kit with top-5 accounts by open question count (sorted descending), each showing: account name, open count, tier, renewal proximity, primary/backup owner",
-        "With account-name argument: case-insensitive substring match on customer_accounts.name; if not found: 'Account not found. Run /relay register to add it.'",
-        "Per-account pulse block shows: open question count (state IN (open, detected, claimed)), SLA met rate (30d from impact_metrics), last resolved question date, renewal proximity, ARR, tier, backup owner if primary User.is_ooo=True",
-        "Response is ephemeral, formatted as Block Kit sections with header",
-        "Slash command registered: relay/commands/help.py dispatches 'pulse' subcommand to handle_pulse",
-        "relay/slack/app.py imports pulse handler",
-        "Unit tests in tests/test_pulse_command.py: no-arg returns top accounts list, with matching name returns account pulse, non-matching name returns not-found message",
+        "sentry-sdk[fastapi,celery] added to pyproject.toml",
+        "relay/api/app.py initializes Sentry if settings.sentry_dsn is set",
+        "SENTRY_DSN optional field in Settings (default '')",
+        "relay/worker/celery_app.py integrates Sentry celery integration if sentry_dsn set",
+        "GET /health extended: checks DB with SELECT 1 in 2s timeout, Redis ping in 1s timeout",
+        "Returns {status: ok|degraded, db: ok|error, redis: ok|error, version: str}; 503 if db or redis fail",
+        "Unit tests: /health returns 200 with mocked ok deps; Sentry init skipped when SENTRY_DSN empty",
         "Typecheck passes"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "Renewal proximity: (renewal_date - today).days formatted as '30d away' or 'OVERDUE (5d ago)' — reuse _renewal_proximity from draft_modal.py. The SLA met rate query: SELECT COUNT(CASE WHEN sla_met THEN 1 END) / COUNT(*) FROM impact_metrics WHERE workspace_id=? AND question_id IN (SELECT id FROM questions WHERE channel_id IN (...)) AND created_at >= now()-30d."
+      "notes": "Settings.sentry_dsn: str = ''. /health already exists — extend it. asyncio.wait_for for DB timeout. Get Redis URL from CELERY_BROKER_URL setting."
     }
   ]
 }

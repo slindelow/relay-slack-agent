@@ -26,6 +26,8 @@ dependencies = [
     "google-api-python-client>=2.130",
     "google-auth>=2.29",
     "google-auth-oauthlib>=1.2",
+    # Plan 7 — production monitoring
+    "sentry-sdk[fastapi,celery]>=2.0",
 ]
 
 [dependency-groups]

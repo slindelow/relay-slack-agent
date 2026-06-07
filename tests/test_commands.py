@@ -30,7 +30,7 @@ def help_handler(monkeypatch):
 async def test_relay_help_acks_and_responds(help_handler):
     ack = AsyncMock()
     respond = AsyncMock()
-    await help_handler(ack=ack, respond=respond, command={"text": "", "user_id": "U123"})
+    await help_handler(ack=ack, respond=respond, command={"text": "", "user_id": "U123"}, client=AsyncMock())
     ack.assert_called_once()
     respond.assert_called_once()
 
@@ -39,7 +39,7 @@ async def test_relay_help_acks_and_responds(help_handler):
 async def test_relay_help_response_contains_blocks(help_handler):
     ack = AsyncMock()
     respond = AsyncMock()
-    await help_handler(ack=ack, respond=respond, command={"text": "help", "user_id": "U123"})
+    await help_handler(ack=ack, respond=respond, command={"text": "help", "user_id": "U123"}, client=AsyncMock())
     assert "blocks" in respond.call_args.kwargs
 
 
@@ -47,7 +47,7 @@ async def test_relay_help_response_contains_blocks(help_handler):
 async def test_unknown_subcommand_returns_error_text(help_handler):
     ack = AsyncMock()
     respond = AsyncMock()
-    await help_handler(ack=ack, respond=respond, command={"text": "bogus", "user_id": "U123"})
+    await help_handler(ack=ack, respond=respond, command={"text": "bogus", "user_id": "U123"}, client=AsyncMock())
     assert "bogus" in respond.call_args.kwargs["text"]
 
 

@@ -4,11 +4,17 @@ from relay.config import get_settings
 
 settings = get_settings()
 
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.celery import CeleryIntegration
+
+    sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[CeleryIntegration()])
+
 celery = Celery(
     "relay",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["relay.worker.tasks", "relay.sla.poller", "relay.worker.connector_tasks", "relay.worker.drafting_tasks"],
+    include=["relay.worker.tasks", "relay.sla.poller", "relay.worker.connector_tasks", "relay.worker.drafting_tasks", "relay.worker.deletion_tasks"],
 )
 
 celery.conf.update(
