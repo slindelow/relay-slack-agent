@@ -80,7 +80,7 @@ async def create_workspace_deletion_job(
 
 
 async def _delete_workspace_data(workspace_id: uuid.UUID, job_id: uuid.UUID) -> None:
-    async with get_session() as session:
+    async with get_session(workspace_id) as session:
         job_result = await session.execute(
             select(WorkspaceDeletionJob).where(WorkspaceDeletionJob.id == job_id)
         )
