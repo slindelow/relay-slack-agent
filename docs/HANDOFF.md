@@ -39,6 +39,27 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 Celery health in CI)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-008 complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added Redis as a GitHub Actions service.
+- Added explicit CI env needed to import the RELAY app outside pytest fixtures.
+- Added a `Check Celery worker health` step that starts a solo worker and runs `celery inspect ping`.
+
+Tests/verification:
+- `.venv/bin/python -m pytest -q` — 231 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+- `ruby -e 'require "yaml"; YAML.load_file(".github/workflows/ci.yml")'` — passed.
+
+Local caveat:
+- Live Celery ping was not run locally because this machine does not have `redis-cli`/Redis available; the new CI service provides Redis for the check.
+
+Next recommended Plan 7 step:
+1. Live full-data-tree workspace deletion verification when a reachable Postgres test DB is available.
+
 ### Codex — 2026-06-07 (Plan 7 KMS re-encryption script)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: Remaining US-001 migration script complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

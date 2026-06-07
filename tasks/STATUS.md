@@ -14,14 +14,14 @@
 | 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
-| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 In progress — legal pages, scope doc, health/Sentry, deletion/purge, KMS, user erasure, reviewer sandbox | Local branch `codex/plan-7-marketplace-readiness` |
+| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 In progress — legal pages, scope doc, health/Sentry, deletion/purge, KMS, user erasure, reviewer sandbox, CI Celery health | Local branch `codex/plan-7-marketplace-readiness` |
 
 ---
 
 ## Immediate Next Steps
 
 1. Merge Plan 6 PR #14 when CI/review are green.
-2. Continue Plan 7: Celery inspect health and live deletion verification.
+2. Continue Plan 7: live deletion verification.
 
 ---
 
@@ -74,10 +74,10 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 
 - ✅ US-005: Added public `/privacy`, `/terms`, and `/sub-processors` pages.
 - ✅ US-006: Added `docs/marketplace/scope-justification.md`.
-- 🟡 US-008: Added optional Sentry initialization and dependency-aware `/health` (`db`, `redis`, 503 on dependency failure). Celery inspect/CI health remains.
+- ✅ US-008: Added optional Sentry initialization, dependency-aware `/health` (`db`, `redis`, 503 on dependency failure), Redis CI service, and `celery inspect ping` worker health step.
 - 🟡 US-002: Added workspace deletion job table/model, `/relay delete-workspace-data` confirmation modal, Celery deletion task, and Slack uninstall token revocation + deletion enqueue. Live full-data-tree DB test remains.
 - ✅ US-003: Added App Home "Disconnect + Purge" flow and connector-id-scoped purge task for chunks/documents + disconnected marker.
 - ✅ US-001: Added KMS columns, AWS KMS provider abstraction, DEK helpers, mocked KMS tests, workspace-DEK write/read paths with global-key fallback, legacy fallback marker, and offline re-encryption script.
 - ✅ US-004: Added signed-confirmation admin user erasure endpoint, `users.deleted_at`, and anonymization of user PII plus nullable actor references.
 - ✅ US-007: Added idempotent `scripts/seed_reviewer_sandbox.py` and `docs/marketplace/reviewer-walkthrough.md`.
-- ⏭️ Next: US-008 Celery inspect health and US-002 live full-data-tree deletion test.
+- ⏭️ Next: US-002 live full-data-tree deletion test when a reachable Postgres test DB is available.
