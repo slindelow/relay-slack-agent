@@ -4,7 +4,7 @@
 
 ---
 
-## Current State (as of 2026-06-06)
+## Current State (as of 2026-06-07)
 
 | Plan | Scope | Status | Where |
 |------|-------|--------|-------|
@@ -14,14 +14,14 @@
 | 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
-| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ❌ Not started | — |
+| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 Started — legal pages, scope doc, health/Sentry | Local branch `codex/plan-7-marketplace-readiness` |
 
 ---
 
 ## Immediate Next Steps
 
-1. Final review Plan 6 branch and open/merge PR.
-2. Start Plan 7 Marketplace Readiness.
+1. Merge Plan 6 PR #14 when CI/review are green.
+2. Continue Plan 7: deletion flows, KMS, reviewer sandbox.
 
 ---
 
@@ -68,4 +68,11 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-006: Added App Home accuracy section with 7-day correction count, classification accuracy, and feedback export link.
 - ✅ US-007: Added admin feedback export endpoint with Slack auth.test, admin role check, JSONL streaming, and day-window clamp.
 - ✅ US-008: Added `/relay pulse [account]` account digest with summary and detailed Block Kit responses.
-- ⏭️ Next: Plan 6 final review, then Plan 7 marketplace readiness.
+- ✅ Plan 6 draft PR opened: #14.
+
+## Plan 7 Progress
+
+- ✅ US-005: Added public `/privacy`, `/terms`, and `/sub-processors` pages.
+- ✅ US-006: Added `docs/marketplace/scope-justification.md`.
+- 🟡 US-008: Added optional Sentry initialization and dependency-aware `/health` (`db`, `redis`, 503 on dependency failure). Celery inspect/CI health remains.
+- ⏭️ Next: US-002 workspace deletion flow, US-003 connector purge, US-001 KMS envelope encryption, and US-007 reviewer sandbox.

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     app_base_url: str
     environment: str = "development"
+    sentry_dsn: str = ""
 
     # HubSpot OAuth (optional — defaults to "" so existing tests don't break)
     hubspot_client_id: str = ""
