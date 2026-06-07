@@ -2,6 +2,8 @@
 
 import json
 import logging
+import hmac
+import hashlib
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -9,11 +11,23 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 
 from relay.config import get_settings
 from relay.db.engine import get_engine
-from relay.db.models import FeedbackSignal, User, Workspace
+from relay.db.models import (
+    Assignment,
+    AuditLog,
+    CustomerAccount,
+    Draft,
+    FeedbackSignal,
+    Message,
+    MonitoredChannel,
+    QuestionEvent,
+    Snooze,
+    User,
+    Workspace,
+)
 from relay.db.session import get_session
 from relay.integrations.hubspot import (
     HubSpotOAuthError,
@@ -214,6 +228,20 @@ def _feedback_signal_to_json(row: FeedbackSignal) -> str:
     return json.dumps(payload, separators=(",", ":")) + "\n"
 
 
+def build_confirmation_token(workspace_id: UUID, slack_user_id: str, signing_key: bytes) -> str:
+    message = f"{workspace_id}:{slack_user_id}".encode()
+    return hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+
+
+def _verify_confirmation_token(workspace_id: UUID, slack_user_id: str, token: str) -> bool:
+    expected = build_confirmation_token(
+        workspace_id,
+        slack_user_id,
+        get_settings().token_encryption_key_bytes,
+    )
+    return hmac.compare_digest(expected, token)
+
+
 @api.get("/relay/admin/feedback-export")
 async def feedback_export(
     authorization: str = Header(default=""),
@@ -270,6 +298,170 @@ async def feedback_export(
         media_type="application/x-ndjson",
         headers={"Content-Disposition": f'attachment; filename="relay-feedback-{date_str}.jsonl"'},
     )
+
+
+@api.delete("/relay/admin/users/{slack_user_id}/erase")
+async def erase_user(
+    slack_user_id: str,
+    req: Request,
+    authorization: str = Header(default=""),
+):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+
+    body = await req.json()
+    confirmation_token = body.get("confirmation_token", "")
+
+    auth = await _slack_auth_test(authorization.removeprefix("Bearer ").strip())
+    slack_team_id = auth.get("team_id")
+    admin_slack_user_id = auth.get("user_id")
+    if not slack_team_id or not admin_slack_user_id:
+        raise HTTPException(status_code=401, detail="Slack auth.test did not return team/user")
+
+    async with get_session() as session:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    if not _verify_confirmation_token(workspace.id, slack_user_id, confirmation_token):
+        raise HTTPException(status_code=403, detail="invalid confirmation token")
+
+    async with get_session(workspace.id) as session:
+        admin_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == admin_slack_user_id,
+            )
+        )
+        admin = admin_result.scalar_one_or_none()
+        if admin is None or admin.relay_role != "admin":
+            raise HTTPException(status_code=403, detail="admin role required")
+
+        user_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == slack_user_id,
+            )
+        )
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(status_code=404, detail="user not found")
+
+        user.display_name = None
+        user.email = None
+        user.deleted_at = datetime.now(UTC)
+
+        await session.execute(
+            update(AuditLog)
+            .where(
+                AuditLog.workspace_id == workspace.id,
+                AuditLog.actor_slack_user_id == slack_user_id,
+            )
+            .values(actor_slack_user_id=None, actor_user_id=None)
+        )
+        await session.execute(
+            update(AuditLog)
+            .where(
+                AuditLog.workspace_id == workspace.id,
+                AuditLog.actor_user_id == user.id,
+            )
+            .values(actor_user_id=None, actor_slack_user_id=None)
+        )
+        await session.execute(
+            update(QuestionEvent)
+            .where(
+                QuestionEvent.workspace_id == workspace.id,
+                QuestionEvent.actor_user_id == user.id,
+            )
+            .values(actor_user_id=None)
+        )
+        await session.execute(
+            update(FeedbackSignal)
+            .where(
+                FeedbackSignal.workspace_id == workspace.id,
+                FeedbackSignal.actor_user_id == user.id,
+            )
+            .values(actor_user_id=None)
+        )
+        await session.execute(
+            update(Draft)
+            .where(
+                Draft.workspace_id == workspace.id,
+                Draft.editor_user_id == user.id,
+            )
+            .values(editor_user_id=None)
+        )
+        await session.execute(
+            update(Draft)
+            .where(
+                Draft.workspace_id == workspace.id,
+                Draft.approved_by_user_id == user.id,
+            )
+            .values(approved_by_user_id=None)
+        )
+        await session.execute(
+            update(Snooze)
+            .where(
+                Snooze.workspace_id == workspace.id,
+                Snooze.snoozed_by_user_id == user.id,
+            )
+            .values(snoozed_by_user_id=None)
+        )
+        await session.execute(
+            update(Assignment)
+            .where(
+                Assignment.workspace_id == workspace.id,
+                Assignment.assigned_by_user_id == user.id,
+            )
+            .values(assigned_by_user_id=None)
+        )
+        await session.execute(
+            update(CustomerAccount)
+            .where(
+                CustomerAccount.workspace_id == workspace.id,
+                CustomerAccount.owner_user_id == user.id,
+            )
+            .values(owner_user_id=None)
+        )
+        await session.execute(
+            update(CustomerAccount)
+            .where(
+                CustomerAccount.workspace_id == workspace.id,
+                CustomerAccount.backup_owner_user_id == user.id,
+            )
+            .values(backup_owner_user_id=None)
+        )
+        await session.execute(
+            update(MonitoredChannel)
+            .where(
+                MonitoredChannel.workspace_id == workspace.id,
+                MonitoredChannel.registered_by_user_id == user.id,
+            )
+            .values(registered_by_user_id=None)
+        )
+        await session.execute(
+            update(Message)
+            .where(
+                Message.workspace_id == workspace.id,
+                Message.sender_slack_user_id == slack_user_id,
+            )
+            .values(sender_slack_user_id=None)
+        )
+        session.add(
+            AuditLog(
+                workspace_id=workspace.id,
+                actor_user_id=admin.id,
+                actor_slack_user_id=admin.slack_user_id,
+                event_type="user_erased",
+                entity_type="user",
+                entity_id=user.id,
+            )
+        )
+
+    return {"erased": True, "user_id": str(user.id)}
 
 
 @api.get("/hubspot/install")

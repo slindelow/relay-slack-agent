@@ -141,6 +141,11 @@ def test_customer_account_has_crm_and_ownership_fields():
     assert required.issubset(cols)
 
 
+def test_user_has_erasure_timestamp():
+    cols = {column.key for column in User.__table__.columns}
+    assert "deleted_at" in cols
+
+
 def test_monitored_channel_stores_customer_workspace_identity():
     cols = {column.key for column in MonitoredChannel.__table__.columns}
     assert "slack_channel_id" in cols
