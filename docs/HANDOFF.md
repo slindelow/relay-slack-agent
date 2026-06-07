@@ -39,6 +39,25 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 reviewer sandbox)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-007 complete locally. Full suite green: 229 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `scripts/seed_reviewer_sandbox.py`, an idempotent sandbox reset/seed script for Slack Marketplace review.
+- The seed creates one reviewer workspace, two accounts, two Slack Connect channels, three active questions covering past-SLA/snoozed/claimed states, one pending draft, and two resolved questions with `KnowledgeEntry` memory.
+- Added `docs/marketplace/reviewer-walkthrough.md` with install, register, alert/claim, draft approval, memory ask, account pulse, connector purge, workspace deletion, and public compliance-page checks.
+
+Tests/verification:
+- `.venv/bin/python -m py_compile scripts/seed_reviewer_sandbox.py` — passed.
+- `.venv/bin/python -m pytest -q` — 229 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. KMS re-encryption script.
+2. Celery inspect/CI health check.
+
 ### Codex — 2026-06-07 (Plan 7 individual user erasure)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-004 complete locally. Focused tests green: 28 passed, 1 pre-existing Starlette/httpx deprecation warning.
