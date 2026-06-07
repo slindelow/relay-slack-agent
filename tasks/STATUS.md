@@ -14,14 +14,14 @@
 | 4 — Source Connectors | pgvector, Google Drive, GitHub, embedding pipeline, retrieval | ✅ Merged to main | PR #12 |
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
-| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 Started — legal pages, scope doc, health/Sentry | Local branch `codex/plan-7-marketplace-readiness` |
+| 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | 🟡 In progress — legal pages, scope doc, health/Sentry, workspace deletion | Local branch `codex/plan-7-marketplace-readiness` |
 
 ---
 
 ## Immediate Next Steps
 
 1. Merge Plan 6 PR #14 when CI/review are green.
-2. Continue Plan 7: deletion flows, KMS, reviewer sandbox.
+2. Continue Plan 7: connector purge, KMS, reviewer sandbox.
 
 ---
 
@@ -75,4 +75,5 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-005: Added public `/privacy`, `/terms`, and `/sub-processors` pages.
 - ✅ US-006: Added `docs/marketplace/scope-justification.md`.
 - 🟡 US-008: Added optional Sentry initialization and dependency-aware `/health` (`db`, `redis`, 503 on dependency failure). Celery inspect/CI health remains.
-- ⏭️ Next: US-002 workspace deletion flow, US-003 connector purge, US-001 KMS envelope encryption, and US-007 reviewer sandbox.
+- 🟡 US-002: Added workspace deletion job table/model, `/relay delete-workspace-data` confirmation modal, Celery deletion task, and Slack uninstall token revocation + deletion enqueue. Live full-data-tree DB test remains.
+- ⏭️ Next: US-003 connector purge, US-001 KMS envelope encryption, and US-007 reviewer sandbox.

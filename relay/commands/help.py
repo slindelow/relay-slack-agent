@@ -7,7 +7,7 @@ from relay.slack.app import app
 
 
 @app.command("/relay")
-async def relay_help(ack, respond, command):
+async def relay_help(ack, respond, command, client=None):
     await ack()
     text = (command.get("text") or "").strip()
     subcommand = text.split()[0].lower() if text else ""
@@ -34,6 +34,20 @@ async def relay_help(ack, respond, command):
         await handle_pulse(ack=_noop_ack, respond=respond, command=command)
         return
 
+    if subcommand == "delete-workspace-data":
+        from relay.commands.delete import handle_delete_workspace_data
+
+        async def _noop_ack():
+            pass
+
+        await handle_delete_workspace_data(
+            ack=_noop_ack,
+            command=command,
+            client=client,
+            respond=respond,
+        )
+        return
+
     if text and subcommand != "help":
         await respond(
             response_type="ephemeral",
@@ -54,7 +68,8 @@ async def relay_help(ack, respond, command):
                         "• `/relay register #channel account tier @owner` - Register a customer channel\n"
                         "• `/relay open` - Planned in Plan 3\n"
                         "• `/relay ask [question]` - Search connected knowledge sources\n"
-                        "• `/relay pulse [account]` - Show account health digest"
+                        "• `/relay pulse [account]` - Show account health digest\n"
+                        "• `/relay delete-workspace-data` - Permanently delete workspace data"
                     ),
                 },
             },

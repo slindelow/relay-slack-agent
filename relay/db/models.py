@@ -101,6 +101,27 @@ class WorkspaceToken(Base):
     workspace: Mapped[Workspace] = relationship(back_populates="tokens")
 
 
+class WorkspaceDeletionJob(Base):
+    __tablename__ = "workspace_deletion_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    actor_slack_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','complete','failed')",
+            name="ck_workspace_deletion_jobs_status",
+        ),
+        Index("idx_workspace_deletion_jobs_workspace_created", "workspace_id", "created_at"),
+    )
+
+
 class WorkspaceSettings(Base):
     __tablename__ = "workspace_settings"
 
