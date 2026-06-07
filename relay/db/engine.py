@@ -29,4 +29,5 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     return _session_factory
 
 
+# Module-level alias — create_async_engine is lazy; no connections open until first query.
 async_engine = get_engine()
