@@ -39,6 +39,33 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 workspace deletion flow)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: US-002 mostly implemented locally. Full suite green: 220 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added migration `0007_plan7_deletion.py` and ORM model `WorkspaceDeletionJob` for deletion job status tracking.
+- Added `relay.worker.deletion_tasks.delete_workspace_data`, with explicit dependency-order deletes, final `audit_log` entry, workspace row deletion, and failed-job marking.
+- Added `/relay delete-workspace-data` confirmation modal and confirmation handler that creates a job and enqueues deletion.
+- Added Slack `app_uninstalled` handler that revokes active workspace tokens and enqueues the same deletion task.
+- Registered deletion tasks with Celery and updated `/relay help` routing/copy.
+- Added focused unit tests for modal construction, job creation, delete-order guarantees, and message event enqueue behavior.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_delete_command.py tests/test_deletion_tasks.py tests/test_slack_events.py tests/test_models.py -q` — 29 passed.
+- `.venv/bin/python -m pytest -q` — 220 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests` — passed.
+- `DATABASE_URL=postgresql+asyncpg://relay:relay@localhost:5432/relay .venv/bin/python -m alembic upgrade head --sql` — rendered through `0007_plan7_deletion`.
+- `git diff --check` — passed.
+
+Remaining for US-002:
+- Add a live DB functional test that creates a full data tree, runs deletion, and verifies rows are gone.
+
+Next recommended Plan 7 steps:
+1. Connector-level purge.
+2. KMS envelope encryption.
+3. Reviewer sandbox seed and walkthrough.
+
 ### Codex — 2026-06-07 (Plan 7 marketplace readiness start)
 Branch: `codex/plan-7-marketplace-readiness` stacked on `claude/plan-6-feedback-memory`
 Status: Plan 6 draft PR #14 is open. Plan 7 started with reviewer-visible pages, scope documentation, and monitoring health. Full suite green: 214 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

@@ -8,7 +8,13 @@ celery = Celery(
     "relay",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["relay.worker.tasks", "relay.sla.poller", "relay.worker.connector_tasks", "relay.worker.drafting_tasks"],
+    include=[
+        "relay.worker.tasks",
+        "relay.sla.poller",
+        "relay.worker.connector_tasks",
+        "relay.worker.drafting_tasks",
+        "relay.worker.deletion_tasks",
+    ],
 )
 
 celery.conf.update(
@@ -32,4 +38,3 @@ celery.conf.update(
         },
     },
 )
-
