@@ -39,6 +39,27 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-07 (Plan 7 KMS re-encryption script)
+Branch: `codex/plan-7-marketplace-readiness`
+Status: Remaining US-001 migration script complete locally. Full suite green: 231 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Added `scripts/reencrypt_workspace_tokens_kms.py`, an offline migration script that processes workspaces without `wrapped_dek`.
+- The script requires configured KMS, creates a per-workspace DEK, decrypts existing `WorkspaceToken`, `CrmConnection`, and `SourceConnector` secrets with the legacy global key, then writes them back under the workspace DEK in the same transaction.
+- Added `--workspace-id` and `--dry-run` options.
+- Marked `TOKEN_ENCRYPTION_KEY` in config as the legacy fallback for pre-KMS rows.
+- Added helper tests proving plaintext survives re-encryption to a new key.
+
+Tests/verification:
+- `.venv/bin/python -m pytest tests/test_kms_reencrypt_script.py tests/test_crypto.py -q` — 12 passed.
+- `.venv/bin/python -m pytest -q` — 231 passed, 19 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Next recommended Plan 7 steps:
+1. Celery inspect/CI health check.
+2. Live full-data-tree workspace deletion verification when a reachable Postgres test DB is available.
+
 ### Codex — 2026-06-07 (Plan 7 reviewer sandbox)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: US-007 complete locally. Full suite green: 229 passed, 19 skipped, 1 pre-existing Starlette/httpx deprecation warning.

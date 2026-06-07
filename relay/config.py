@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     test_database_url: str = "postgresql+asyncpg://relay:relay@localhost:5432/relay_test"
     redis_url: str = "redis://localhost:6379/0"
 
-    token_encryption_key: str
+    token_encryption_key: str = Field(
+        description="Legacy fallback key used before workspace KMS envelope encryption is migrated.",
+    )
 
     anthropic_api_key: str
     classifier_model: str = "claude-3-5-haiku-latest"
