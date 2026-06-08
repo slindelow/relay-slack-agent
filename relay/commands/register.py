@@ -186,6 +186,12 @@ async def handle_register(ack, respond, command, client=None) -> None:
             return
 
         customer_team_id, is_ext_shared = await _fetch_channel_metadata(client, channel_id, slack_team_id)
+        if not is_ext_shared or not customer_team_id:
+            await respond(
+                response_type="ephemeral",
+                text=":no_entry: Register a Slack Connect channel mention so RELAY can verify the external customer workspace.",
+            )
+            return
 
         async with get_session(workspace_id=workspace.id) as session:
             owner_user = None

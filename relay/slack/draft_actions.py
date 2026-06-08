@@ -13,6 +13,31 @@ from relay.db.session import get_session
 logger = logging.getLogger(__name__)
 
 
+async def _resolve_workspace_id(team_id: str) -> uuid.UUID | None:
+    if not team_id:
+        return None
+
+    from sqlalchemy import select
+    from relay.db.models import Workspace
+
+    async with get_session() as unscoped:
+        ws_result = await unscoped.execute(
+            select(Workspace).where(Workspace.slack_team_id == team_id)
+        )
+        workspace = ws_result.scalar_one_or_none()
+    return workspace.id if workspace else None
+
+
+async def _require_csm_for_workspace(workspace_id: uuid.UUID, slack_user_id: str) -> bool:
+    if not slack_user_id:
+        return False
+
+    from relay.auth import require_relay_csm
+
+    async with get_session(workspace_id) as session:
+        return await require_relay_csm(session, workspace_id, slack_user_id)
+
+
 # ---------------------------------------------------------------------------
 # US-005: Open draft review modal
 # ---------------------------------------------------------------------------
@@ -25,6 +50,7 @@ async def handle_open_draft_modal(ack, body, client):
     actions = body.get("actions", [])
     draft_id_str = actions[0].get("value", "") if actions else ""
     team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    user_id = body.get("user", {}).get("id", "")
     trigger_id = body.get("trigger_id", "")
 
     try:
@@ -35,20 +61,21 @@ async def handle_open_draft_modal(ack, body, client):
 
     try:
         from sqlalchemy import select
-        from relay.db.models import CustomerAccount, Draft, MonitoredChannel, Question, Workspace
+        from relay.db.models import CustomerAccount, Draft, MonitoredChannel, Question
         from relay.db.session import get_session
         from relay.slack.draft_modal import build_draft_modal
 
-        async with get_session() as unscoped:
-            ws_result = await unscoped.execute(
-                select(Workspace).where(Workspace.slack_team_id == team_id)
+        workspace_id = await _resolve_workspace_id(team_id)
+        if workspace_id is None:
+            return
+        if not await _require_csm_for_workspace(workspace_id, user_id):
+            logger.warning(
+                "relay_open_draft_modal: unauthorized open attempt by %s for draft %s",
+                user_id,
+                draft_id,
             )
-            workspace = ws_result.scalar_one_or_none()
-
-        if workspace is None:
             return
 
-        workspace_id = workspace.id
         async with get_session(workspace_id) as session:
             draft_result = await session.execute(
                 select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
@@ -103,6 +130,7 @@ async def handle_generate_draft(ack, body, respond):
     actions = body.get("actions", [])
     question_id_str = actions[0].get("value", "") if actions else ""
     team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    user_id = body.get("user", {}).get("id", "")
 
     try:
         question_id = uuid.UUID(question_id_str)
@@ -112,20 +140,32 @@ async def handle_generate_draft(ack, body, respond):
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Workspace
+        from relay.db.models import Question
         from relay.db.session import get_session
         from relay.worker.drafting_tasks import generate_draft_for_question
 
-        async with get_session() as unscoped:
-            ws_result = await unscoped.execute(
-                select(Workspace).where(Workspace.slack_team_id == team_id)
+        workspace_id = await _resolve_workspace_id(team_id)
+        if workspace_id is None:
+            return
+        if not await _require_csm_for_workspace(workspace_id, user_id):
+            logger.warning(
+                "relay_generate_draft: unauthorized generate attempt by %s for question %s",
+                user_id,
+                question_id,
             )
-            workspace = ws_result.scalar_one_or_none()
-
-        if workspace is None:
             return
 
-        generate_draft_for_question.delay(str(workspace.id), str(question_id))
+        async with get_session(workspace_id) as session:
+            q_result = await session.execute(
+                select(Question).where(
+                    Question.workspace_id == workspace_id,
+                    Question.id == question_id,
+                )
+            )
+            if q_result.scalar_one_or_none() is None:
+                return
+
+        generate_draft_for_question.delay(str(workspace_id), str(question_id))
 
         await respond(
             response_type="ephemeral",
@@ -315,24 +355,26 @@ async def handle_discard_draft(ack, body, client):
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Draft, FeedbackSignal, ImpactMetric, User, Workspace
+        from relay.db.models import Draft, FeedbackSignal, ImpactMetric, User
         from relay.db.session import get_session
 
-        async with get_session() as unscoped:
-            ws_result = await unscoped.execute(
-                select(Workspace).where(Workspace.slack_team_id == team_id)
-            )
-            workspace = ws_result.scalar_one_or_none()
-        if workspace is None:
+        workspace_id = await _resolve_workspace_id(team_id)
+        if workspace_id is None:
             return
-
-        workspace_id = workspace.id
         async with get_session(workspace_id) as session:
             draft_result = await session.execute(
                 select(Draft).where(Draft.workspace_id == workspace_id, Draft.id == draft_id)
             )
             draft = draft_result.scalar_one_or_none()
             if draft is None:
+                return
+            from relay.auth import require_relay_csm
+            if not await require_relay_csm(session, workspace_id, user_id):
+                logger.warning(
+                    "relay_discard_draft: unauthorized discard attempt by %s for draft %s",
+                    user_id,
+                    draft_id,
+                )
                 return
 
             actor_result = await session.execute(
@@ -384,19 +426,13 @@ async def handle_regenerate_draft(ack, body, client):
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Draft, FeedbackSignal, User, Workspace
+        from relay.db.models import Draft, FeedbackSignal, User
         from relay.db.session import get_session
         from relay.worker.drafting_tasks import generate_draft_for_question
 
-        async with get_session() as unscoped:
-            ws_result = await unscoped.execute(
-                select(Workspace).where(Workspace.slack_team_id == team_id)
-            )
-            workspace = ws_result.scalar_one_or_none()
-        if workspace is None:
+        workspace_id = await _resolve_workspace_id(team_id)
+        if workspace_id is None:
             return
-
-        workspace_id = workspace.id
         question_id: uuid.UUID | None = None
         async with get_session(workspace_id) as session:
             draft_result = await session.execute(
@@ -404,6 +440,14 @@ async def handle_regenerate_draft(ack, body, client):
             )
             draft = draft_result.scalar_one_or_none()
             if draft is None:
+                return
+            from relay.auth import require_relay_csm
+            if not await require_relay_csm(session, workspace_id, user_id):
+                logger.warning(
+                    "relay_regenerate_draft: unauthorized regenerate attempt by %s for draft %s",
+                    user_id,
+                    draft_id,
+                )
                 return
 
             actor_result = await session.execute(

@@ -2,7 +2,7 @@ import importlib
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select, text
@@ -119,15 +119,16 @@ async def test_register_valid_shows_success():
     monkeypatch.setattr(register_module, "_get_or_create_account", fake_get_or_create_account)
     monkeypatch.setattr(register_module, "register_channel", fake_register_channel)
     monkeypatch.setattr(register_module, "_fetch_channel_metadata", AsyncMock(return_value=("T_CUSTOMER", True)))
-    await handle_register(
-        ack=ack,
-        respond=respond,
-        command={
-            "text": "register <#C123456|acme-corp> Acme Corp enterprise",
-            "user_id": "U123",
-            "team_id": "T_INTERNAL",
-        },
-    )
+    with patch("relay.auth.require_relay_admin", new=AsyncMock(return_value=True)):
+        await handle_register(
+            ack=ack,
+            respond=respond,
+            command={
+                "text": "register <#C123456|acme-corp> Acme Corp enterprise",
+                "user_id": "U123",
+                "team_id": "T_INTERNAL",
+            },
+        )
     monkeypatch.undo()
     ack.assert_called_once()
     response_text = respond.call_args.kwargs["text"]
@@ -172,6 +173,40 @@ async def test_register_missing_team_id_returns_error():
         },
     )
     assert "missing Slack workspace id" in respond.call_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_register_requires_verified_slack_connect_channel(monkeypatch):
+    ack = AsyncMock()
+    respond = AsyncMock()
+    workspace_id = uuid.uuid4()
+
+    workspace_session = AsyncMock()
+    workspace_session.execute = AsyncMock(
+        return_value=SimpleNamespace(scalar_one_or_none=lambda: SimpleNamespace(id=workspace_id))
+    )
+    auth_session = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_get_session(workspace_id=None):
+        yield auth_session if workspace_id else workspace_session
+
+    monkeypatch.setattr(register_module, "get_session", fake_get_session)
+    monkeypatch.setattr(register_module, "_fetch_channel_metadata", AsyncMock(return_value=(None, False)))
+
+    with patch("relay.auth.require_relay_admin", new=AsyncMock(return_value=True)):
+        await handle_register(
+            ack=ack,
+            respond=respond,
+            client=AsyncMock(),
+            command={
+                "text": "register <#C123456|acme-corp> Acme Corp enterprise",
+                "user_id": "U_ADMIN",
+                "team_id": "T_INTERNAL",
+            },
+        )
+
+    assert "Slack Connect" in respond.call_args.kwargs["text"]
 
 
 @pytest.mark.asyncio

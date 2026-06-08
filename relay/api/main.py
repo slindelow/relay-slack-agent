@@ -228,18 +228,76 @@ def _feedback_signal_to_json(row: FeedbackSignal) -> str:
     return json.dumps(payload, separators=(",", ":")) + "\n"
 
 
-def build_confirmation_token(workspace_id: UUID, slack_user_id: str, signing_key: bytes) -> str:
-    message = f"{workspace_id}:{slack_user_id}".encode()
-    return hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+def build_confirmation_token(
+    workspace_id: UUID,
+    slack_user_id: str,
+    signing_key: bytes,
+    *,
+    issued_at: int | None = None,
+) -> str:
+    token_issued_at = issued_at if issued_at is not None else int(datetime.now(UTC).timestamp())
+    message = f"{workspace_id}:{slack_user_id}:{token_issued_at}".encode()
+    signature = hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+    return f"{token_issued_at}.{signature}"
 
 
-def _verify_confirmation_token(workspace_id: UUID, slack_user_id: str, token: str) -> bool:
+def _verify_confirmation_token(
+    workspace_id: UUID,
+    slack_user_id: str,
+    token: str,
+    *,
+    max_age_seconds: int = 900,
+) -> bool:
+    try:
+        issued_at_str, _signature = token.split(".", 1)
+        issued_at = int(issued_at_str)
+    except (ValueError, AttributeError):
+        return False
+
+    now = int(datetime.now(UTC).timestamp())
+    if issued_at > now + 60 or now - issued_at > max_age_seconds:
+        return False
+
     expected = build_confirmation_token(
         workspace_id,
         slack_user_id,
         get_settings().token_encryption_key_bytes,
+        issued_at=issued_at,
     )
     return hmac.compare_digest(expected, token)
+
+
+async def _authenticated_admin_workspace(authorization: str) -> tuple[Workspace, str]:
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+
+    auth = await _slack_auth_test(authorization.removeprefix("Bearer ").strip())
+    slack_team_id = auth.get("team_id")
+    slack_user_id = auth.get("user_id")
+    if not slack_team_id or not slack_user_id:
+        raise HTTPException(status_code=401, detail="Slack auth.test did not return team/user")
+
+    async with get_session() as session:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    async with get_session(workspace.id) as session:
+        user_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == slack_user_id,
+                User.deleted_at.is_(None),
+            )
+        )
+        user = user_result.scalar_one_or_none()
+    if user is None or user.relay_role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+
+    return workspace, slack_user_id
 
 
 @api.get("/relay/admin/feedback-export")
@@ -465,19 +523,27 @@ async def erase_user(
 
 
 @api.get("/hubspot/install")
-async def hubspot_install(req: Request):
-    """Redirect admin to HubSpot OAuth authorization page."""
+async def hubspot_install(
+    req: Request,
+    authorization: str = Header(default=""),
+):
+    """Redirect a RELAY admin to the HubSpot OAuth authorization page."""
     settings = get_settings()
-    workspace_id = req.query_params.get("workspace_id")
-    if not workspace_id:
-        return JSONResponse({"error": "missing workspace_id"}, status_code=400)
-    try:
-        state = build_hubspot_state(
-            workspace_id=UUID(workspace_id),
-            signing_key=settings.token_encryption_key_bytes,
-        )
-    except ValueError:
-        return JSONResponse({"error": "invalid workspace_id"}, status_code=400)
+    workspace, _slack_user_id = await _authenticated_admin_workspace(authorization)
+
+    requested_workspace_id = req.query_params.get("workspace_id")
+    if requested_workspace_id:
+        try:
+            requested_uuid = UUID(requested_workspace_id)
+        except ValueError:
+            return JSONResponse({"error": "invalid workspace_id"}, status_code=400)
+        if requested_uuid != workspace.id:
+            raise HTTPException(status_code=403, detail="workspace mismatch")
+
+    state = build_hubspot_state(
+        workspace_id=workspace.id,
+        signing_key=settings.token_encryption_key_bytes,
+    )
     url = hubspot_oauth_url(
         client_id=settings.hubspot_client_id,
         redirect_uri=settings.hubspot_redirect_uri,

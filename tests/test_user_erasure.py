@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -32,11 +33,25 @@ def _client():
     return module, TestClient(module.api)
 
 
-def test_build_confirmation_token_is_deterministic():
+def test_build_confirmation_token_signs_user_and_timestamp():
     workspace_id = uuid.uuid4()
-    token = build_confirmation_token(workspace_id, "U123", b"a" * 32)
-    assert token == build_confirmation_token(workspace_id, "U123", b"a" * 32)
-    assert token != build_confirmation_token(workspace_id, "U124", b"a" * 32)
+    issued_at = 1_700_000_000
+    token = build_confirmation_token(workspace_id, "U123", b"a" * 32, issued_at=issued_at)
+
+    assert token.startswith(f"{issued_at}.")
+    assert token == build_confirmation_token(workspace_id, "U123", b"a" * 32, issued_at=issued_at)
+    assert token != build_confirmation_token(workspace_id, "U124", b"a" * 32, issued_at=issued_at)
+
+
+def test_verify_confirmation_token_rejects_expired_token():
+    module = importlib.import_module("relay.api.main")
+    workspace_id = uuid.uuid4()
+    issued_at = int((datetime.now(UTC) - timedelta(hours=1)).timestamp())
+    token = build_confirmation_token(workspace_id, "U123", b"a" * 32, issued_at=issued_at)
+
+    with patch("relay.api.main.get_settings") as mock_settings:
+        mock_settings.return_value.token_encryption_key_bytes = b"a" * 32
+        assert module._verify_confirmation_token(workspace_id, "U123", token) is False
 
 
 def test_erase_user_requires_valid_confirmation_token():

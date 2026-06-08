@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from urllib.parse import urlencode
 from uuid import UUID
@@ -39,11 +39,18 @@ class HubSpotAPIError(Exception):
     pass
 
 
-def build_hubspot_state(workspace_id: UUID, signing_key: bytes) -> str:
+def build_hubspot_state(
+    workspace_id: UUID,
+    signing_key: bytes,
+    *,
+    now: datetime | None = None,
+) -> str:
     """Build a signed OAuth state token containing the workspace id."""
+    issued_at = int((now or datetime.now(timezone.utc)).timestamp())
     payload = {
         "workspace_id": str(workspace_id),
         "nonce": secrets.token_urlsafe(16),
+        "iat": issued_at,
     }
     payload_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode("ascii").rstrip("=")
@@ -52,7 +59,13 @@ def build_hubspot_state(workspace_id: UUID, signing_key: bytes) -> str:
     return f"{payload_b64}.{signature_b64}"
 
 
-def parse_hubspot_state(state: str, signing_key: bytes) -> UUID:
+def parse_hubspot_state(
+    state: str,
+    signing_key: bytes,
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = 600,
+) -> UUID:
     """Validate a HubSpot OAuth state token and return its workspace id."""
     try:
         payload_b64, signature_b64 = state.split(".", 1)
@@ -63,6 +76,12 @@ def parse_hubspot_state(state: str, signing_key: bytes) -> UUID:
 
         payload_bytes = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
         payload = json.loads(payload_bytes)
+        issued_at = int(payload["iat"])
+        current_time = int((now or datetime.now(timezone.utc)).timestamp())
+        if issued_at > current_time + 60:
+            raise HubSpotOAuthError("OAuth state issued in the future")
+        if current_time - issued_at > max_age_seconds:
+            raise HubSpotOAuthError("OAuth state expired")
         return UUID(payload["workspace_id"])
     except (ValueError, KeyError, json.JSONDecodeError, binascii.Error) as exc:
         raise HubSpotOAuthError("Invalid OAuth state format") from exc

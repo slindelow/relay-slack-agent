@@ -2,6 +2,7 @@
 
 import pytest
 import uuid
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from urllib.parse import parse_qs, urlparse
 
@@ -92,6 +93,16 @@ def test_hubspot_oauth_state_rejects_tampering():
 def test_hubspot_oauth_state_rejects_malformed_input():
     with pytest.raises(HubSpotOAuthError):
         parse_hubspot_state("not-a-valid-state", bytes.fromhex("a" * 64))
+
+
+def test_hubspot_oauth_state_rejects_expired_state():
+    workspace_id = uuid.uuid4()
+    signing_key = bytes.fromhex("a" * 64)
+    issued_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+    state = build_hubspot_state(workspace_id, signing_key, now=issued_at)
+
+    with pytest.raises(HubSpotOAuthError):
+        parse_hubspot_state(state, signing_key, max_age_seconds=600)
 
 
 # ---------------------------------------------------------------------------

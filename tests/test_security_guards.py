@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 # ---------------------------------------------------------------------------
@@ -265,3 +266,52 @@ async def test_send_draft_rejects_empty_response_body():
         await handle_send_draft(ack=ack, body=body, client=client)
 
     client.chat_postMessage.assert_not_called()
+
+
+def test_hubspot_install_requires_bearer_admin_token():
+    from relay.api.main import api
+
+    client = TestClient(api)
+    response = client.get("/hubspot/install", follow_redirects=False)
+
+    assert response.status_code == 401
+
+
+def test_hubspot_install_uses_authenticated_workspace():
+    from relay.api.main import api
+
+    client = TestClient(api)
+    workspace_id = uuid.uuid4()
+    workspace = MagicMock()
+    workspace.id = workspace_id
+    admin = MagicMock()
+    admin.relay_role = "admin"
+
+    def fake_get_session(workspace_id_arg=None):
+        @asynccontextmanager
+        async def _cm():
+            session = AsyncMock()
+            result = MagicMock()
+            result.scalar_one_or_none.return_value = admin if workspace_id_arg else workspace
+            session.execute = AsyncMock(return_value=result)
+            yield session
+
+        return _cm()
+
+    with (
+        patch("relay.api.main._slack_auth_test", new=AsyncMock(return_value={"team_id": "T_TEAM", "user_id": "U_ADMIN"})),
+        patch("relay.api.main.get_session", side_effect=fake_get_session),
+        patch("relay.api.main.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.token_encryption_key_bytes = b"\xaa" * 32
+        mock_settings.return_value.hubspot_client_id = "client-id"
+        mock_settings.return_value.hubspot_redirect_uri = "https://relay.example.com/hubspot/oauth_redirect"
+
+        response = client.get(
+            f"/hubspot/install?workspace_id={workspace_id}",
+            headers={"Authorization": "Bearer xoxp-admin"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    assert response.headers["location"].startswith("https://app.hubspot.com/oauth/authorize?")

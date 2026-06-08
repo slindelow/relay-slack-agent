@@ -17,7 +17,7 @@ async def relay_help(ack, respond, command, client=None):
         async def _noop_ack():
             pass
 
-        await handle_register(ack=_noop_ack, respond=respond, command=command)
+        await handle_register(ack=_noop_ack, respond=respond, command=command, client=client)
         return
 
     if subcommand == "ask":
@@ -35,12 +35,12 @@ async def relay_help(ack, respond, command, client=None):
         return
 
     if subcommand == "delete-workspace-data":
-        from relay.commands.delete import handle_delete_workspace_data
+        from relay.commands.delete import handle_delete_workspace
 
         async def _noop_ack():
             pass
 
-        await handle_delete_workspace_data(
+        await handle_delete_workspace(
             ack=_noop_ack,
             command=command,
             client=client,

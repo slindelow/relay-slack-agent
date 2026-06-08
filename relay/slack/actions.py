@@ -105,7 +105,10 @@ async def handle_claim_question(ack, body, respond, logger=logger):
         # Step 2: all further queries use the RLS-enforced scoped session
         async with get_session(workspace_id) as session:
             q_result = await session.execute(
-                select(Question).where(Question.id == question_id)
+                select(Question).where(
+                    Question.workspace_id == workspace_id,
+                    Question.id == question_id,
+                )
             )
             question = q_result.scalar_one_or_none()
 
@@ -173,7 +176,10 @@ async def _handle_snooze(ack, body, respond, hours: int, logger=logger):
         # Step 2: all further queries use the RLS-enforced scoped session
         async with get_session(workspace_id) as session:
             q_result = await session.execute(
-                select(Question).where(Question.id == question_id)
+                select(Question).where(
+                    Question.workspace_id == workspace_id,
+                    Question.id == question_id,
+                )
             )
             question = q_result.scalar_one_or_none()
 
@@ -191,7 +197,10 @@ async def _handle_snooze(ack, body, respond, hours: int, logger=logger):
             ))
             # Advance next_alert_at so the poller doesn't fire before snooze lifts
             q2_result = await session.execute(
-                select(Question).where(Question.id == question_id)
+                select(Question).where(
+                    Question.workspace_id == workspace_id,
+                    Question.id == question_id,
+                )
             )
             q2 = q2_result.scalar_one_or_none()
             if q2:
@@ -257,7 +266,10 @@ async def handle_mark_not_question(ack, body, respond, logger=logger):
         # Step 2: all further queries use the RLS-enforced scoped session
         async with get_session(workspace_id) as session:
             q_result = await session.execute(
-                select(Question).where(Question.id == question_id)
+                select(Question).where(
+                    Question.workspace_id == workspace_id,
+                    Question.id == question_id,
+                )
             )
             question = q_result.scalar_one_or_none()
 

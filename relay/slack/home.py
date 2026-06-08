@@ -365,8 +365,38 @@ async def handle_disconnect_purge_connector(ack, body, client):
     actions = body.get("actions", [])
     connector_id = actions[0].get("value", "") if actions else ""
     team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    user_id = body.get("user", {}).get("id", "")
     trigger_id = body.get("trigger_id", "")
     if not connector_id or not team_id or not trigger_id:
+        return
+
+    try:
+        from sqlalchemy import select
+
+        from relay.auth import require_relay_admin
+        from relay.db.models import Workspace
+        from relay.db.session import get_session
+
+        async with get_session() as unscoped:
+            result = await unscoped.execute(
+                select(Workspace).where(Workspace.slack_team_id == team_id)
+            )
+            workspace = result.scalar_one_or_none()
+            if workspace is None:
+                return
+
+        async with get_session(workspace_id=workspace.id) as auth_session:
+            is_admin = await require_relay_admin(auth_session, workspace.id, user_id)
+
+        if not is_admin:
+            logger.warning(
+                "relay_disconnect_purge_connector: non-admin %s attempted purge modal for team %s",
+                user_id,
+                team_id,
+            )
+            return
+    except Exception:
+        logger.exception("relay_disconnect_purge_connector: authorization check failed")
         return
 
     await client.views_open(
