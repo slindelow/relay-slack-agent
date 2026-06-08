@@ -6,10 +6,35 @@ from relay.config import get_settings
 
 settings = get_settings()
 
-app = AsyncApp(
-    signing_secret=settings.slack_signing_secret,
-    token=settings.slack_bot_token or None,
-)
+if settings.slack_bot_token:
+    # Single-workspace mode: used in dev and tests when SLACK_BOT_TOKEN is set.
+    app = AsyncApp(
+        signing_secret=settings.slack_signing_secret,
+        token=settings.slack_bot_token,
+    )
+else:
+    # Multi-workspace OAuth mode: production / private beta.
+    from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
+    from relay.slack.installation_store import DBInstallationStore
+
+    app = AsyncApp(
+        signing_secret=settings.slack_signing_secret,
+        oauth_settings=AsyncOAuthSettings(
+            client_id=settings.slack_client_id,
+            client_secret=settings.slack_client_secret,
+            installation_store=DBInstallationStore(),
+            scopes=[
+                "app_mentions:read",
+                "channels:read",
+                "chat:write",
+                "commands",
+                "groups:history",
+                "groups:read",
+                "im:write",
+                "users:read",
+            ],
+        ),
+    )
 
 from relay.commands import help as _help  # noqa: E402,F401
 from relay.commands import ask as _ask  # noqa: E402,F401
