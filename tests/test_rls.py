@@ -325,6 +325,33 @@ async def test_plan_3_sla_tables_respect_rls(db_session):
 
 
 @pytest.mark.asyncio
+async def test_draft_rls_isolates_across_workspaces(db_session):
+    """Draft created for workspace A is not visible to workspace B's session."""
+    from relay.db.models import Draft
+
+    ws_a = await _create_workspace(db_session, "T_DRAFT_RLS_A")
+    ws_b = await _create_workspace(db_session, "T_DRAFT_RLS_B")
+    question_a = await _create_question_stack(db_session, ws_a, "DRLS_A")
+
+    await _set_context(db_session, ws_a.id)
+    draft_a = Draft(
+        workspace_id=ws_a.id,
+        question_id=question_a.id,
+        internal_brief="Draft internal brief",
+        status="pending",
+    )
+    db_session.add(draft_a)
+    await db_session.flush()
+
+    # Switch to workspace B — draft_a must be invisible
+    await _set_context(db_session, ws_b.id)
+    result = await db_session.execute(
+        select(Draft).where(Draft.id == draft_a.id)
+    )
+    assert result.scalar_one_or_none() is None, "RLS leak: draft_a visible to workspace B"
+
+
+@pytest.mark.asyncio
 async def test_tenant_scoped_foreign_keys_reject_cross_workspace_parent_refs(db_session):
     ws_a = await _create_workspace(db_session, "T_RLS_008_A")
     ws_b = await _create_workspace(db_session, "T_RLS_008_B")
