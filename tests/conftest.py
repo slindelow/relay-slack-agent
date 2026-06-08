@@ -41,6 +41,7 @@ TENANT_TABLES = (
     "source_connectors",
     "source_documents",
     "knowledge_chunks",
+    "knowledge_entries",
     "drafts",
     "retrieval_logs",
     "feedback_signals",
