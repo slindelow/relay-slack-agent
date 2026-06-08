@@ -10,7 +10,7 @@ RELAY detects unanswered customer questions in Slack Connect channels, uses CRM/
 
 ## Source Of Truth
 - Product PRD: `RELAY_PRD.md`
-- Current build plan: `docs/PLAN_1_FOUNDATION.md`
+- Current build plan: `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 - Shared project status: `docs/HANDOFF.md`
 - Stable branch: `main`
 
@@ -61,29 +61,19 @@ Do not reverse these decisions:
 - Salesforce is post-launch/next provider.
 
 ## Current Build Sequence
-1. Plan 1: Classifier validation + foundation.
-2. Plan 2: HubSpot + account registry + channel registration.
-3. Plan 3: SLA engine + alerts.
-4. Plan 4: Source connectors + retrieval.
-5. Plan 5: Evidence bundle + draft approval.
-6. Plan 6: Resolution memory + account pulse.
-7. Plan 7: Marketplace readiness.
+1. Plans 1-8: Backend product loop, Marketplace readiness foundation, and security hardening.
+2. Plan 9: Private beta launch + external user readiness.
+3. Post-beta: Slack Marketplace submission fixes and listing package.
 
-## Plan 1 Focus
-Plan 1 includes:
-- Project scaffold.
-- Classifier labeling/evaluation tooling.
-- Mocked classifier unit tests.
-- Config module.
-- AES-256-GCM token encryption.
-- Async SQLAlchemy/Postgres foundation.
-- RLS migration and isolation tests.
-- Slack signature verification.
-- Celery/Redis event queue.
-- Slack OAuth workspace upsert/token storage.
-- FastAPI/Bolt mount.
-- App Home skeleton.
-- `/relay help`.
+## Plan 9 Focus
+Plan 9 turns RELAY from a tested backend into an installable private-beta Slack product:
+- AWS-oriented production deployment path.
+- Slack manifest and private-beta install path.
+- Admin onboarding through App Home and `/relay settings`.
+- Connector/CRM readiness for non-engineer setup.
+- Production KMS and security validation.
+- Live Slack Connect beta validation.
+- External user docs, support path, and Marketplace preparation after beta evidence.
 
 ## Handoff Format
 When ending work, update `docs/HANDOFF.md` with:

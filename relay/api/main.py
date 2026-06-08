@@ -91,6 +91,31 @@ async def health():
     return body
 
 
+@api.get("/", response_class=HTMLResponse)
+async def beta_install_page():
+    install_url = f"{get_settings().app_base_url.rstrip('/')}/slack/install"
+    return _html_page(
+        "Private Beta",
+        f"""
+<h1>RELAY Private Beta</h1>
+<p>RELAY helps customer success teams monitor registered Slack Connect customer channels, detect unanswered customer questions, and draft source-backed replies for human approval.</p>
+<p><a href="{install_url}" style="display:inline-block;background:#17202a;color:white;padding:10px 14px;border-radius:6px;text-decoration:none;">Add to Slack</a></p>
+<h2>Before You Install</h2>
+<ul>
+  <li>You must be a Slack workspace admin for the workspace where RELAY will run.</li>
+  <li>RELAY only monitors Slack Connect channels after an admin registers them.</li>
+  <li>Generated customer replies require human approval before posting.</li>
+</ul>
+<h2>After Install</h2>
+<ol>
+  <li>Open RELAY App Home in Slack.</li>
+  <li>Run <code>/relay settings</code> to check setup status.</li>
+  <li>Register a customer Slack Connect channel with <code>/relay register #channel Account Name enterprise @owner</code>.</li>
+</ol>
+""",
+    )
+
+
 def _html_page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(
         f"""<!doctype html>

@@ -50,3 +50,13 @@ def test_legal_pages_are_public(monkeypatch):
         response = client.get(path)
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
+
+
+def test_beta_install_page_links_to_slack_install(monkeypatch):
+    module, client = _client(monkeypatch)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Add to Slack" in response.text
+    assert "https://relay.example.com/slack/install" in response.text
