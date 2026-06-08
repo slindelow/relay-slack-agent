@@ -6,19 +6,19 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 ## Current Status
 Repo live at `https://github.com/slindelow/relay-slack-agent`.
 
-Merged to `main` (Plans 1 + 2 foundation):
-- PR #1: collaboration docs
-- PR #2: PRD v2.0 + Plan 1 details
-- PR #3: Plan 1 foundation scaffold (classifier, DB, crypto, Slack, Celery)
-- PR #4: Plan 2 core schema + migration 0002 + RLS on 6 tenant tables
-- PR #6: HubSpot OAuth client, routes, encrypted connection storage, sync stub
-- PR #7: DB-backed `/relay register`, customer account/channel registration
-- PR #8: HANDOFF update
+**Plans 1–9 merged to main. Code is complete. Remaining work is operational only.**
 
-Open PRs (pending merge, in dependency order):
-- PR #9 (`claude/plan-2-question-machine`): 5-state question machine, 10 unit tests
-- PR #10 (`claude/plan-2-event-ingestion`): Bolt message handler + full Celery classify worker, 5 unit tests
-- PR #11 (`claude/plan-3-sla`): Full SLA engine — see below
+Merged to `main` (all plans):
+- PRs #1–18: Plans 1–8 (foundation → security hardening)
+- PR #19 (`claude/plan-9a-foundation`): Plan 9 — multi-workspace OAuth, connector UI, KMS, deployment artifacts, beta docs — **merged 2026-06-08**
+
+Open PRs: none.
+
+## Launch Blockers (Operational — require external credentials)
+1. **Deploy to AWS**: ECS/Fargate web + worker + beat, RDS pgvector, ElastiCache Redis, KMS key, Secrets Manager — see `docs/deployment/private-beta-aws.md`.
+2. **Configure Slack app**: Run `scripts/configure-manifest.sh <APP_BASE_URL>`, paste manifest into https://api.slack.com/apps, update `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `SLACK_SIGNING_SECRET`.
+3. **Run KMS smoke check**: `KMS_PROVIDER=aws KMS_KEY_ID=<arn> uv run python scripts/smoke_kms.py` — must print `KMS smoke ok` before storing customer secrets.
+4. **Beta validation**: Walk through `docs/deployment/beta-validation-checklist.md` in a live workspace — install, register channel, classify question, approve draft, post response.
 
 ## Source Of Truth
 - `RELAY_PRD.md`
@@ -38,6 +38,20 @@ Open PRs (pending merge, in dependency order):
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Claude — 2026-06-08 (Plan 9 merge + handoff)
+Branch: `claude/plan-9a-foundation` → **PR #19 merged to main**
+Status: All Plan 9 code merged. 286 passed, 28 skipped, 1 warning.
+
+Work completed:
+- Merged PR #19 (squash) to main — 40 files, 3207 insertions.
+- Updated `docs/HANDOFF.md` to reflect Plans 1–9 all merged and document the 4 remaining operational blockers.
+
+Remaining work (operational only — no code changes needed):
+1. Deploy AWS stack (ECS, RDS pgvector, ElastiCache, KMS, Secrets Manager) — see `docs/deployment/private-beta-aws.md`.
+2. Configure Slack manifest via `scripts/configure-manifest.sh <APP_BASE_URL>` and update API credentials.
+3. Run `scripts/smoke_kms.py` against the live KMS key.
+4. Walk through `docs/deployment/beta-validation-checklist.md` in a live workspace.
 
 ### Codex — 2026-06-08 (Plan 9 private beta launch start)
 Branch: `main`
