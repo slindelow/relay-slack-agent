@@ -36,18 +36,21 @@ For deployment instructions, see [docs/deployment/private-beta-aws.md](docs/depl
 
 ## What Still Blocks Private Beta
 
-- Production deployment must be stood up for web, worker, beat, Postgres with pgvector, Redis, secrets, health checks, and monitoring.
-- Slack app configuration must be created from `slack-app-manifest.yaml` and pointed at the deployed `APP_BASE_URL`.
-- Admin onboarding has beta setup/status surfaces; full OAuth-based connector setup remains post-beta polish.
-- HubSpot company/account upsert has an initial implementation and still needs beta validation against real HubSpot data.
-- AWS KMS provider selection is implemented and still needs IAM/config smoke validation before live customer secrets use it.
-- A real Slack Connect end-to-end beta flow still needs to be validated before external users rely on RELAY.
+The remaining blockers are operational, not code:
+
+- **Deploy the stack** — stand up web, worker, beat, RDS Postgres with pgvector, ElastiCache Redis, and Secrets Manager using the runbook in `docs/deployment/private-beta-aws.md`. Use `scripts/start-local.sh` to validate locally first.
+- **Create the Slack app** — run `scripts/configure-manifest.sh $APP_BASE_URL`, paste the generated manifest into https://api.slack.com/apps, and copy the credentials into your environment.
+- **Validate KMS in the live environment** — set `KMS_PROVIDER=aws KMS_KEY_ID=arn:...` and run `scripts/smoke_kms.py` after deploy.
+- **Run the end-to-end validation checklist** — follow `docs/deployment/beta-validation-checklist.md` in a live workspace before inviting external users.
 
 ## Private Beta Launch Docs
 
 - Active shared plan: `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 - AWS deployment runbook: `docs/deployment/private-beta-aws.md`
+- End-to-end validation checklist: `docs/deployment/beta-validation-checklist.md`
+- Non-technical user guide for CS admins: `docs/beta-user-guide.md`
 - Slack app manifest: `slack-app-manifest.yaml`
+- Local dev quickstart: `scripts/start-local.sh`
 - Marketplace reviewer docs: `docs/marketplace/`
 - Multi-agent handoff/status: `docs/HANDOFF.md` and `tasks/STATUS.md`
 
