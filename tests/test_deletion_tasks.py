@@ -332,6 +332,8 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
 
     async with get_session(workspace_id) as session:
         for model in _DELETE_ORDER:
+            if model is AuditLog:
+                continue
             assert await _count(session, model, workspace_id) == 0
         audit_count = await _count(session, AuditLog, workspace_id)
         assert audit_count == 1

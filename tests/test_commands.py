@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 
 from relay.commands import register as register_module
 from relay.commands.register import _fetch_channel_metadata, _parse_register_args, handle_register
-from relay.db.models import CustomerAccount, MonitoredChannel
+from relay.db.models import CustomerAccount, MonitoredChannel, User
 from relay.slack.oauth import upsert_workspace_from_install
 
 
@@ -212,6 +212,13 @@ async def test_register_requires_verified_slack_connect_channel(monkeypatch):
 @pytest.mark.asyncio
 async def test_register_persists_account_and_channel(db_session, monkeypatch):
     workspace = await upsert_workspace_from_install(db_session, "T_REGISTER", "Register Corp")
+    db_session.add(
+        User(
+            workspace_id=workspace.id,
+            slack_user_id="UREGISTRAR",
+            relay_role="admin",
+        )
+    )
     await db_session.flush()
 
     @asynccontextmanager
