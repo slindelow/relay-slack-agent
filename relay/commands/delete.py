@@ -92,7 +92,7 @@ async def relay_confirm_delete_workspace(ack, body):
         from relay.db.models import Workspace
         from relay.db.session import get_session
         from relay.auth import require_relay_admin
-        from relay.worker.deletion_tasks import delete_workspace_data
+        from relay.worker.deletion_tasks import create_workspace_deletion_job, delete_workspace_data
 
         async with get_session() as session:
             result = await session.execute(
@@ -113,7 +113,8 @@ async def relay_confirm_delete_workspace(ack, body):
             )
             return
 
-        delete_workspace_data.delay(str(workspace.id))
+        job = await create_workspace_deletion_job(workspace.id)
+        delete_workspace_data.delay(str(workspace.id), str(job.id))
         logger.info("Enqueued workspace deletion for workspace_id=%s", workspace.id)
     except Exception:
         logger.exception("Failed to enqueue workspace deletion for team_id=%s", team_id)
