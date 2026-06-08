@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3.12, SQLAlchemy async ORM, Bolt (Slack SDK), FastAPI, pytest-asyncio, uv
 
+**Implementation status (2026-06-08):** Complete locally on `claude/plan-8-security-hardening`. Final verification: `.venv/bin/python -m pytest -q` passed with 248 passed, 20 skipped, and 1 existing Starlette/httpx warning; `compileall` and `git diff --check` passed.
+
 ---
 
 ## File map

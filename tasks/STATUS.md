@@ -4,7 +4,7 @@
 
 ---
 
-## Current State (as of 2026-06-07)
+## Current State (as of 2026-06-08)
 
 | Plan | Scope | Status | Where |
 |------|-------|--------|-------|
@@ -15,13 +15,14 @@
 | 5 — Drafting + Approval | Evidence bundle, LLM draft, Slack modal, bot-posted response | ✅ Merged to main | PR #13 |
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
 | 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ✅ Complete locally — legal pages, scope doc, health/Sentry, deletion/purge, KMS, user erasure, reviewer sandbox, CI Celery health | Local branch `codex/plan-7-marketplace-readiness` |
+| 8 — Security Hardening | Admin/CSM guards, tenant-scoped action lookups, OAuth/erasure token hardening, deletion/audit cleanup, log redaction, retry/model config cleanup | ✅ Complete locally — full suite green | Local branch `claude/plan-8-security-hardening` |
 
 ---
 
 ## Immediate Next Steps
 
-1. Merge Plan 6 PR #14 when CI/review are green.
-2. Push Plan 7 branch and open a PR after review.
+1. Push Plan 8 branch and open a PR for final review.
+2. Merge Plan 6/7/8 PRs in dependency order once CI/review are green.
 
 ---
 
@@ -81,3 +82,14 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 - ✅ US-004: Added signed-confirmation admin user erasure endpoint, `users.deleted_at`, and anonymization of user PII plus nullable actor references.
 - ✅ US-007: Added idempotent `scripts/seed_reviewer_sandbox.py` and `docs/marketplace/reviewer-walkthrough.md`.
 - ✅ Plan 7 complete locally. The full-data-tree deletion test skips on this machine because Postgres/Docker are unavailable, and is set up to run under CI's Postgres service.
+
+## Plan 8 Progress
+
+- ✅ Added centralized `require_relay_admin()` and `require_relay_csm()` authorization helpers.
+- ✅ Added admin checks for workspace deletion, channel registration, connector purge, HubSpot install, and admin export/erasure flows.
+- ✅ Added CSM/admin checks for draft open, generate, send, discard, and regenerate actions.
+- ✅ Resolved Slack workspaces from `team_id` before tenant-scoped action lookups and tightened explicit `workspace_id` predicates.
+- ✅ Hardened HubSpot OAuth state and individual-erasure confirmation tokens with signed timestamps and expiry.
+- ✅ Guarded empty erasure secrets, validated HubSpot workspace binding, redacted HubSpot response bodies, and made AWS KMS configuration fail explicitly until implemented.
+- ✅ Cleaned up deletion cascade coverage, SLA token revocation field usage, drafting retry behavior, dead code, and configurable summary model.
+- ✅ Verification on 2026-06-08: `.venv/bin/python -m pytest -q` — 248 passed, 20 skipped, 1 existing Starlette/httpx warning; compileall and `git diff --check` passed.

@@ -39,6 +39,28 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
+### Codex — 2026-06-08 (Plan 8 security hardening review/finalization)
+Branch: `claude/plan-8-security-hardening`
+Status: Plan 8 security hardening complete locally. Full suite green: 248 passed, 20 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+
+Work completed:
+- Reviewed Claude's Plan 8 hardening work and fixed remaining authorization gaps.
+- Secured HubSpot install behind Slack bearer auth plus RELAY admin role, with workspace binding and expiring signed OAuth state.
+- Converted individual-erasure confirmation tokens from deterministic long-lived HMACs to timestamped, expiring signed tokens.
+- Required verified Slack Connect metadata before registering monitored channels.
+- Added CSM/admin authorization to draft open, generate, send, discard, and regenerate actions.
+- Required admin authorization before opening and submitting destructive workspace/connector modals.
+- Tightened tenant-scoped question/draft lookups with explicit `workspace_id` predicates.
+- Verified later cleanup commits covering audit-log deletion cascade, SLA `is_revoked`, empty erasure secret guard, HubSpot log redaction, AWS KMS fail-closed behavior, drafting retry logic, dead-code removal, and configurable summary model.
+
+Tests/verification:
+- `.venv/bin/python -m pytest -q` — 248 passed, 20 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
+- `git diff --check` — passed.
+
+Next recommended step:
+1. Push `claude/plan-8-security-hardening` and open the Plan 8 PR for review.
+
 ### Codex — 2026-06-07 (Plan 7 workspace deletion functional test)
 Branch: `codex/plan-7-marketplace-readiness`
 Status: Remaining US-002 verification added. Full suite green locally: 231 passed, 20 skipped, 1 pre-existing Starlette/httpx deprecation warning.
