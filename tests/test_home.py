@@ -206,3 +206,31 @@ def test_setup_checklist_all_complete():
     assert ":white_check_mark: HubSpot CRM connected" in texts
     assert ":white_check_mark: Knowledge source connected" in texts
     assert "Setup complete" in texts
+
+
+def test_error_connector_shows_retry_sync_button():
+    connector = _make_connector("github", "error", datetime.now(UTC) - timedelta(hours=1))
+    blocks = build_home([connector])
+    action_blocks = [b for b in blocks if b.get("type") == "actions"]
+    retry_elements = [
+        el
+        for b in action_blocks
+        for el in b.get("elements", [])
+        if el.get("action_id") == "relay_sync_connector"
+    ]
+    assert len(retry_elements) == 1
+    assert retry_elements[0]["text"]["text"] == "Retry sync"
+    assert retry_elements[0]["value"] == str(connector.id)
+
+
+def test_synced_connector_has_no_retry_button():
+    connector = _make_connector("github", "synced", datetime.now(UTC) - timedelta(hours=1))
+    blocks = build_home([connector])
+    action_blocks = [b for b in blocks if b.get("type") == "actions"]
+    retry_elements = [
+        el
+        for b in action_blocks
+        for el in b.get("elements", [])
+        if el.get("action_id") == "relay_sync_connector"
+    ]
+    assert len(retry_elements) == 0

@@ -93,6 +93,17 @@ def _connector_blocks(connector_rows: list[Any]) -> list[dict]:
             },
         })
 
+        if row.sync_status == "error":
+            blocks.append({
+                "type": "actions",
+                "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Retry sync"},
+                    "action_id": "relay_sync_connector",
+                    "value": str(row.id),
+                }],
+            })
+
     return blocks
 
 

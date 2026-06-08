@@ -4,6 +4,26 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 
 > **Current status as of 2026-06-08:** Plans 1-8 have built most of the backend product loop and security foundation. Plan 9 is now active: private beta launch, deployment, Slack distribution, onboarding UX, production KMS, live Slack Connect validation, and external-user packaging. RELAY is not yet a self-serve public Slack Marketplace app.
 
+## Private Beta
+
+> RELAY is currently in private beta. Install links are shared directly with invited CS teams.
+
+**Install RELAY →** `https://your-relay-app.example.com/` *(replace with your deployed APP_BASE_URL)*
+
+Once installed, four setup steps unlock the full feature set:
+
+1. **Admin configured** — automatic on install (the person who clicks "Add to Slack" becomes admin)
+2. **Register a channel** — run `/relay register #channel-name CompanyName` in your first customer channel
+3. **Connect HubSpot** — click "Connect HubSpot" in the RELAY App Home and complete OAuth
+4. **Connect a knowledge source** — run `/relay settings` and connect GitHub or Google Drive
+
+After all four steps, the App Home shows ":tada: Setup complete" and RELAY begins monitoring for unanswered customer questions automatically.
+
+For a full walkthrough, see [docs/beta-user-guide.md](docs/beta-user-guide.md).
+For deployment instructions, see [docs/deployment/private-beta-aws.md](docs/deployment/private-beta-aws.md).
+
+---
+
 ## What Works Today
 
 - Slack/FastAPI event surface for Slack OAuth, Events API, interactivity, App Home, and slash commands.
