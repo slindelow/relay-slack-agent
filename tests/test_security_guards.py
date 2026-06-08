@@ -287,12 +287,26 @@ def test_hubspot_install_uses_authenticated_workspace():
     admin = MagicMock()
     admin.relay_role = "admin"
 
+    call_count = 0
+
     def fake_get_session(workspace_id_arg=None):
+        nonlocal call_count
+
         @asynccontextmanager
         async def _cm():
+            nonlocal call_count
             session = AsyncMock()
             result = MagicMock()
-            result.scalar_one_or_none.return_value = admin if workspace_id_arg else workspace
+            call_count += 1
+            if call_count == 1:
+                # First call: workspace lookup by slack_team_id
+                result.scalar_one_or_none.return_value = workspace
+            elif call_count == 2:
+                # Second call: user lookup for admin check
+                result.scalar_one_or_none.return_value = admin
+            else:
+                # Third call: workspace existence DB check (new guard)
+                result.scalar_one_or_none.return_value = workspace.id
             session.execute = AsyncMock(return_value=result)
             yield session
 
@@ -315,3 +329,82 @@ def test_hubspot_install_uses_authenticated_workspace():
 
     assert response.status_code == 302
     assert response.headers["location"].startswith("https://app.hubspot.com/oauth/authorize?")
+
+
+# ---------------------------------------------------------------------------
+# GDPR erasure + HubSpot OAuth guards
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_erasure_endpoint_returns_503_when_secret_not_set():
+    """Erasure endpoint returns 503 when ERASURE_SECRET is not configured."""
+    import relay.api.main as api_module
+    from fastapi.testclient import TestClient
+
+    mock_settings = MagicMock()
+    mock_settings.erasure_secret = ""
+
+    with patch("relay.api.main.get_settings", return_value=mock_settings):
+        client = TestClient(api_module.api, raise_server_exceptions=False)
+        resp = client.delete(
+            "/relay/admin/users/U123/erase",
+            params={"confirmation_token": "any"},
+            headers={"Authorization": "Bearer fake"},
+        )
+    assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_hubspot_install_returns_404_for_unknown_workspace():
+    """HubSpot install endpoint returns 404 when workspace_id does not exist."""
+    import relay.api.main as api_module
+    from fastapi.testclient import TestClient
+
+    workspace_id = uuid.uuid4()
+    workspace = MagicMock()
+    workspace.id = workspace_id
+    admin = MagicMock()
+    admin.relay_role = "admin"
+
+    call_count = 0
+
+    def fake_get_session(workspace_id_arg=None):
+        nonlocal call_count
+
+        @asynccontextmanager
+        async def _cm():
+            nonlocal call_count
+            session = AsyncMock()
+            result = MagicMock()
+            call_count += 1
+            if call_count == 1:
+                # First call: workspace lookup in _authenticated_admin_workspace
+                result.scalar_one_or_none.return_value = workspace
+            elif call_count == 2:
+                # Second call: user/admin lookup in _authenticated_admin_workspace
+                result.scalar_one_or_none.return_value = admin
+            else:
+                # Third call: new workspace existence guard — returns None (not found)
+                result.scalar_one_or_none.return_value = None
+            session.execute = AsyncMock(return_value=result)
+            yield session
+
+        return _cm()
+
+    client = TestClient(api_module.api)
+    with (
+        patch("relay.api.main._slack_auth_test", new=AsyncMock(return_value={"team_id": "T_TEAM", "user_id": "U_ADMIN"})),
+        patch("relay.api.main.get_session", side_effect=fake_get_session),
+        patch("relay.api.main.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.token_encryption_key_bytes = b"\xaa" * 32
+        mock_settings.return_value.hubspot_client_id = "client-id"
+        mock_settings.return_value.hubspot_redirect_uri = "https://relay.example.com/hubspot/oauth_redirect"
+
+        resp = client.get(
+            f"/hubspot/install?workspace_id={workspace_id}",
+            headers={"Authorization": "Bearer xoxp-admin"},
+        )
+
+    assert resp.status_code == 404

@@ -364,6 +364,13 @@ async def erase_user(
     req: Request,
     authorization: str = Header(default=""),
 ):
+    settings = get_settings()
+    if not settings.erasure_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="User erasure endpoint is not configured on this deployment.",
+        )
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="missing bearer token")
 
@@ -534,11 +541,26 @@ async def hubspot_install(
     requested_workspace_id = req.query_params.get("workspace_id")
     if requested_workspace_id:
         try:
-            requested_uuid = UUID(requested_workspace_id)
+            workspace_uuid = UUID(requested_workspace_id)
         except ValueError:
             return JSONResponse({"error": "invalid workspace_id"}, status_code=400)
-        if requested_uuid != workspace.id:
+        if workspace_uuid != workspace.id:
             raise HTTPException(status_code=403, detail="workspace mismatch")
+
+        # Verify workspace exists before issuing OAuth state
+        try:
+            from sqlalchemy import select as sa_select
+            from relay.db.models import Workspace as WorkspaceModel
+
+            async with get_session() as db:
+                ws_check = await db.execute(
+                    sa_select(WorkspaceModel.id).where(WorkspaceModel.id == workspace_uuid)
+                )
+                if ws_check.scalar_one_or_none() is None:
+                    return JSONResponse({"error": "workspace not found"}, status_code=404)
+        except Exception:
+            logger.error("hubspot_install: DB error checking workspace %s", requested_workspace_id)
+            return JSONResponse({"error": "database error"}, status_code=500)
 
     state = build_hubspot_state(
         workspace_id=workspace.id,

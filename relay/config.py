@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     google_drive_credentials_json: str = ""
     github_token: str = ""
 
+    # GDPR erasure (leave empty to disable the endpoint on deployments that don't need it)
+    erasure_secret: str = ""
+
     @field_validator("token_encryption_key")
     @classmethod
     def validate_key(cls, value: str) -> str:

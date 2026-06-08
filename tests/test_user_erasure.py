@@ -63,7 +63,10 @@ def test_erase_user_requires_valid_confirmation_token():
     with (
         patch("relay.api.main._slack_auth_test", new=AsyncMock(return_value={"team_id": "T123", "user_id": "UADMIN"})),
         patch("relay.api.main.get_session", return_value=_SessionContext(unscoped)),
+        patch("relay.api.main.get_settings") as mock_settings,
     ):
+        mock_settings.return_value.erasure_secret = "configured-secret"
+        mock_settings.return_value.token_encryption_key_bytes = b"\xaa" * 32
         response = client.request(
             "DELETE",
             "/relay/admin/users/UERASE/erase",
