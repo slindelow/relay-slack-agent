@@ -18,9 +18,9 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 
 - Production deployment must be stood up for web, worker, beat, Postgres with pgvector, Redis, secrets, health checks, and monitoring.
 - Slack app configuration must be created from `slack-app-manifest.yaml` and pointed at the deployed `APP_BASE_URL`.
-- Admin onboarding needs to be completed: first-admin bootstrap, richer App Home setup state, and non-engineer connector setup.
-- HubSpot company/account upsert is still a launch blocker.
-- `KMS_PROVIDER=aws` must be fully enabled before live beta secrets use AWS KMS.
+- Admin onboarding has beta setup/status surfaces; full OAuth-based connector setup remains post-beta polish.
+- HubSpot company/account upsert has an initial implementation and still needs beta validation against real HubSpot data.
+- AWS KMS provider selection is implemented and still needs IAM/config smoke validation before live customer secrets use it.
 - A real Slack Connect end-to-end beta flow still needs to be validated before external users rely on RELAY.
 
 ## Private Beta Launch Docs

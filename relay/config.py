@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # GDPR erasure (leave empty to disable the endpoint on deployments that don't need it)
     erasure_secret: str = ""
 
+    # Contact emails shown in public legal pages
+    privacy_contact_email: str = "privacy@relay.example.com"
+    legal_contact_email: str = "legal@relay.example.com"
+
     @field_validator("token_encryption_key")
     @classmethod
     def validate_key(cls, value: str) -> str:

@@ -1,6 +1,18 @@
+from types import SimpleNamespace
+from unittest.mock import patch
+
 import pytest
 
-from relay.crypto import decrypt_token, ensure_workspace_dek, generate_dek, unwrap_dek, wrap_dek, workspace_encryption_key, encrypt_token
+from relay.crypto import (
+    decrypt_token,
+    ensure_workspace_dek,
+    generate_dek,
+    kms_provider_from_settings,
+    unwrap_dek,
+    wrap_dek,
+    workspace_encryption_key,
+    encrypt_token,
+)
 
 FAKE_KEY = bytes.fromhex("a" * 64)
 
@@ -72,3 +84,30 @@ def test_ensure_workspace_dek_sets_wrapped_dek():
     assert dek != FAKE_KEY
     assert workspace.wrapped_dek == b"wrapped:" + dek
     assert workspace.kms_key_id == "test-key"
+
+
+def test_kms_provider_from_settings_returns_none_for_local_modes():
+    for provider in ("", "none", "local"):
+        settings = SimpleNamespace(kms_provider=provider, kms_key_id="")
+        assert kms_provider_from_settings(settings) is None
+
+
+def test_kms_provider_from_settings_requires_key_for_aws():
+    settings = SimpleNamespace(kms_provider="aws", kms_key_id="")
+    with pytest.raises(ValueError, match="KMS_KEY_ID"):
+        kms_provider_from_settings(settings)
+
+
+def test_kms_provider_from_settings_builds_aws_provider():
+    settings = SimpleNamespace(kms_provider="aws", kms_key_id="arn:aws:kms:test")
+    with patch("relay.crypto.AWSKMSProvider") as provider_cls:
+        provider = kms_provider_from_settings(settings)
+
+    provider_cls.assert_called_once_with("arn:aws:kms:test")
+    assert provider is provider_cls.return_value
+
+
+def test_kms_provider_from_settings_rejects_unknown_provider():
+    settings = SimpleNamespace(kms_provider="gcp", kms_key_id="key")
+    with pytest.raises(ValueError, match="Unsupported"):
+        kms_provider_from_settings(settings)

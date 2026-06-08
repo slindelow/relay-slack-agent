@@ -139,9 +139,10 @@ def _html_page(title: str, body: str) -> HTMLResponse:
 
 @api.get("/privacy", response_class=HTMLResponse)
 async def privacy_policy():
+    privacy_email = get_settings().privacy_contact_email
     return _html_page(
         "Privacy Policy",
-        """
+        f"""
 <h1>RELAY Privacy Policy</h1>
 <p>RELAY helps customer success teams monitor Slack Connect customer channels, detect unanswered questions, retrieve approved context, and draft responses for human approval.</p>
 <h2>Data We Collect</h2>
@@ -157,18 +158,19 @@ async def privacy_policy():
 <h2>Sub-processors</h2>
 <p>RELAY uses Anthropic for LLM processing with no-training/ZDR settings where available, an embedding provider for semantic retrieval, the selected cloud hosting provider, and Sentry for production error monitoring. See <a href="/sub-processors">Sub-processors</a>.</p>
 <h2>User Rights and Deletion</h2>
-<p>Workspace admins can request deletion through <code>/relay delete-workspace-data</code> once enabled or by contacting privacy@relay.example.com. Individual user erasure requests can be sent to the same address.</p>
+<p>Workspace admins can request deletion through <code>/relay delete-workspace-data</code> or by contacting <a href="mailto:{privacy_email}">{privacy_email}</a>. Individual user erasure requests can be sent to the same address.</p>
 <h2>Contact</h2>
-<p>Privacy and DPA requests: privacy@relay.example.com.</p>
+<p>Privacy and DPA requests: <a href="mailto:{privacy_email}">{privacy_email}</a>.</p>
 """,
     )
 
 
 @api.get("/terms", response_class=HTMLResponse)
 async def terms():
+    legal_email = get_settings().legal_contact_email
     return _html_page(
         "Terms of Service",
-        """
+        f"""
 <h1>RELAY Terms of Service</h1>
 <p>These terms govern use of RELAY, a Slack-native assistant for customer success teams. By installing or using RELAY, your organization agrees to use the service only for lawful business purposes and only in workspaces and channels where it has the right to process the relevant data.</p>
 <h2>Human Approval</h2>
@@ -178,7 +180,7 @@ async def terms():
 <h2>Service Availability</h2>
 <p>RELAY is provided on a commercially reasonable basis. Beta and pilot deployments may change as Marketplace readiness work is completed.</p>
 <h2>Contact</h2>
-<p>Questions about these terms: legal@relay.example.com.</p>
+<p>Questions about these terms: <a href="mailto:{legal_email}">{legal_email}</a>.</p>
 """,
     )
 

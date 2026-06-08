@@ -78,22 +78,15 @@ async def _sync_hubspot_accounts_async(workspace_id: str) -> None:
             workspace_id,
         )
 
-        # TODO: implement full upsert logic for customer_accounts
-        # For now, log and return without writing to DB to keep the stub simple.
-        # Full implementation should:
-        #   - For each company: upsert CustomerAccount matching on
-        #     (workspace_id, crm_provider='hubspot', external_crm_id=company["id"])
-        #   - Set name, domain from company["properties"]
-        #   - Set external_crm_url = f"https://app.hubspot.com/contacts/unknown/company/{company['id']}"
-        #   - Bulk-insert new accounts, update existing ones
+        upserted = 0
         for company in companies:
-            props = company.get("properties", {})
-            logger.debug(
-                "HubSpot company id=%s name=%s domain=%s",
-                company.get("id"),
-                props.get("name"),
-                props.get("domain"),
-            )
+            if await _upsert_hubspot_company(
+                session=session,
+                workspace_id=ws_uuid,
+                connection=connection,
+                company=company,
+            ):
+                upserted += 1
 
         # Update sync status
         now = datetime.now(tz=timezone.utc)
@@ -101,5 +94,72 @@ async def _sync_hubspot_accounts_async(workspace_id: str) -> None:
         connection.sync_status = "synced"
 
         logger.info(
-            "sync_hubspot_accounts completed for workspace_id=%s", workspace_id
+            "sync_hubspot_accounts completed for workspace_id=%s upserted=%d",
+            workspace_id,
+            upserted,
         )
+
+
+async def _upsert_hubspot_company(
+    *,
+    session,
+    workspace_id: UUID,
+    connection,
+    company: dict,
+) -> bool:
+    from sqlalchemy import select
+
+    from relay.db.models import CustomerAccount
+
+    external_id = str(company.get("id") or "").strip()
+    if not external_id:
+        logger.warning("Skipping HubSpot company without id workspace_id=%s", workspace_id)
+        return False
+
+    props = company.get("properties") or {}
+    name = (props.get("name") or props.get("domain") or f"HubSpot company {external_id}").strip()
+    domain = (props.get("domain") or "").strip() or None
+    portal_id = connection.hubspot_portal_id or "unknown"
+    external_url = f"https://app.hubspot.com/contacts/{portal_id}/company/{external_id}"
+
+    result = await session.execute(
+        select(CustomerAccount).where(
+            CustomerAccount.workspace_id == workspace_id,
+            CustomerAccount.crm_provider == "hubspot",
+            CustomerAccount.external_crm_id == external_id,
+            CustomerAccount.deleted_at.is_(None),
+        )
+    )
+    account = result.scalar_one_or_none()
+
+    account_context = {
+        "hubspot": {
+            "hs_lead_status": props.get("hs_lead_status"),
+            "dealtype": props.get("dealtype"),
+            "createdate": props.get("createdate"),
+            "hs_analytics_source": props.get("hs_analytics_source"),
+        }
+    }
+
+    if account is None:
+        account = CustomerAccount(
+            workspace_id=workspace_id,
+            name=name,
+            domain=domain,
+            crm_provider="hubspot",
+            external_crm_id=external_id,
+            external_crm_url=external_url,
+            tier="starter",
+            lifecycle_stage=props.get("hs_lead_status"),
+            account_context=account_context,
+        )
+        session.add(account)
+        await session.flush()
+        return True
+
+    account.name = name
+    account.domain = domain
+    account.external_crm_url = external_url
+    account.lifecycle_stage = props.get("hs_lead_status")
+    account.account_context = account_context
+    return True

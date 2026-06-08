@@ -9,6 +9,9 @@ from slack_sdk.oauth.installation_store import Bot, Installation
 from slack_sdk.oauth.installation_store.async_installation_store import AsyncInstallationStore
 from sqlalchemy import select, text
 
+from relay.config import get_settings
+from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
+from relay.db.models import Workspace, WorkspaceToken
 from relay.db.session import get_session
 from relay.slack.oauth import bootstrap_first_admin, store_bot_token, upsert_workspace_from_install
 
@@ -46,10 +49,6 @@ class DBInstallationStore(AsyncInstallationStore):
     ) -> Optional[Bot]:
         if not team_id:
             return None
-
-        from relay.config import get_settings
-        from relay.crypto import decrypt_token, kms_provider_from_settings, workspace_encryption_key
-        from relay.db.models import Workspace, WorkspaceToken
 
         settings = get_settings()
         kms = kms_provider_from_settings(settings)
@@ -96,6 +95,8 @@ class DBInstallationStore(AsyncInstallationStore):
                 team_id=team_id,
                 team_name=workspace.slack_team_name,
                 enterprise_id=enterprise_id or "",
+                bot_id="",
+                bot_user_id="",
                 bot_token=bot_token,
                 bot_scopes=(token_row.scopes or "").split(",") if token_row.scopes else [],
                 is_enterprise_install=is_enterprise_install or False,

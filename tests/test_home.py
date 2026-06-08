@@ -25,6 +25,22 @@ def test_build_home_no_connectors():
     assert any("No sources connected" in t for t in texts)
 
 
+def test_build_home_setup_state_reflects_progress():
+    blocks = build_home(
+        [],
+        setup_state=SetupState(
+            admin_count=1,
+            channel_count=1,
+            crm_connected=True,
+            source_count=0,
+        ),
+    )
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+    assert "RELAY admin configured" in text
+    assert "HubSpot CRM connected" in text
+    assert ":white_circle: Knowledge source connected" in text
+
+
 def test_build_home_with_google_drive_connector():
     connector = _make_connector("google_drive", "synced", datetime.now(UTC) - timedelta(hours=2))
     blocks = build_home([connector])

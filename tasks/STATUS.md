@@ -61,10 +61,9 @@ Marketplace submission package
 ## Known TODOs (non-blocking)
 
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py`
-- HubSpot company upsert — stubbed in `relay/worker/hubspot_tasks.py`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
-- Production AWS KMS provider still needs to replace the current `KMS_PROVIDER=aws` guard before live beta secrets use KMS.
-- `/relay settings`, first-admin bootstrap, and admin-driven connector setup are Plan 9 launch blockers.
+- Production AWS KMS provider selection is implemented; live beta still needs IAM/config smoke validation before customer secrets use it.
+- Admin-driven connector setup exists for beta; full OAuth-based connector onboarding remains post-beta polish.
 
 ## Plan 9 Progress
 
@@ -72,7 +71,15 @@ Marketplace submission package
 - ✅ Added private-beta AWS deployment runbook in `docs/deployment/private-beta-aws.md`.
 - ✅ Added checked-in Slack app manifest in `slack-app-manifest.yaml`.
 - ✅ Added minimal container artifacts (`Dockerfile`, `.dockerignore`) for web/worker/beat services.
-- 🚧 Next: complete admin onboarding UX, first-admin bootstrap, HubSpot upsert, production AWS KMS, and live Slack Connect beta validation.
+- ✅ Added public private-beta install page at `/`.
+- ✅ Added `/relay settings` setup summary and first-admin bootstrap for workspaces with zero admins.
+- ✅ Replaced HubSpot sync stub with workspace-scoped company-to-`CustomerAccount` upsert.
+- ✅ Enabled `KMS_PROVIDER=aws` provider selection with `KMS_KEY_ID` validation.
+- ✅ Added KMS smoke script (`scripts/smoke_kms.py`) and AWS IAM/runbook instructions.
+- ✅ Added manual private beta acceptance checklist in `docs/deployment/private-beta-acceptance.md`.
+- ✅ Added beta GitHub/Google Drive connector setup modals, encrypted credential storage, and sync enqueue from `/relay settings`.
+- ✅ Added DB-backed Slack installation store tests.
+- 🚧 Next: run AWS KMS smoke in beta infrastructure and live Slack Connect beta validation.
 
 ## Plan 6 Progress
 

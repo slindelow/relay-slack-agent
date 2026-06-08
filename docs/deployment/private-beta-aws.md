@@ -72,17 +72,33 @@ uv run alembic upgrade head
 ```bash
 curl https://relay-beta.example.com/health
 uv run celery -A relay.worker.celery_app.celery inspect ping --timeout=5
+KMS_PROVIDER=aws KMS_KEY_ID=arn:aws:kms:... uv run python scripts/smoke_kms.py
 ```
 
 Done means:
 - `/health` returns `{"status":"ok","db":"ok","redis":"ok"}`.
 - Celery reports at least one worker.
+- KMS smoke prints `KMS smoke ok` using the beta KMS key.
 - `/relay help` works in the installed Slack workspace.
 - App Home opens without errors.
 - `/relay settings` shows setup state and links.
 
+## AWS KMS IAM Permissions
+
+The ECS task role that runs web, worker, beat, and one-off migration/smoke commands must be allowed to call these actions on the configured `KMS_KEY_ID`:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["kms:Encrypt", "kms:Decrypt"],
+  "Resource": "arn:aws:kms:REGION:ACCOUNT_ID:key/KEY_ID"
+}
+```
+
+The smoke command uses a throwaway data encryption key and a fake token string. It does not read or write customer data.
+
 ## Current Beta Gaps
 
-- `KMS_PROVIDER=aws` must be fully enabled before live beta secrets are stored under AWS KMS.
-- HubSpot company upsert must be completed before CRM-backed account sync is considered beta-ready.
-- Connector setup needs admin-driven OAuth/configuration before non-engineers can self-serve Google Drive or GitHub.
+- AWS KMS provider selection is implemented, but the beta environment still needs IAM validation and a live KMS smoke check before real customer secrets are stored.
+- HubSpot company upsert has an initial implementation and needs validation against real beta HubSpot data before CRM-backed account sync is considered beta-ready.
+- Connector setup has beta Slack modals for GitHub tokens and Google Drive credential JSON. Full OAuth-based connector onboarding remains post-beta polish.

@@ -60,3 +60,22 @@ def test_beta_install_page_links_to_slack_install(monkeypatch):
     assert response.status_code == 200
     assert "Add to Slack" in response.text
     assert "https://relay.example.com/slack/install" in response.text
+
+
+def test_legal_pages_use_configurable_contact_emails(monkeypatch):
+    monkeypatch.setenv("PRIVACY_CONTACT_EMAIL", "privacy@acme.io")
+    monkeypatch.setenv("LEGAL_CONTACT_EMAIL", "legal@acme.io")
+
+    from relay.config import get_settings
+    get_settings.cache_clear()
+
+    module, client = _client(monkeypatch)
+
+    try:
+        privacy = client.get("/privacy")
+        assert "privacy@acme.io" in privacy.text
+
+        terms = client.get("/terms")
+        assert "legal@acme.io" in terms.text
+    finally:
+        get_settings.cache_clear()

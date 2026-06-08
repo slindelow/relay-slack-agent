@@ -55,9 +55,9 @@ Done means:
 ### 4. Admin Onboarding UX
 
 Tasks:
-- Make App Home and `/relay settings` show setup state and next actions.
+- Make App Home and `/relay settings` show setup state and next actions. Initial `/relay settings` setup summary is present.
 - Provide admin paths for HubSpot, source connectors, channel registration, deletion, and connector purge.
-- Add a first-admin/bootstrap rule so the installer can administer RELAY without manual DB edits.
+- Add a first-admin/bootstrap rule so the installer can administer RELAY without manual DB edits. Current beta bootstrap promotes the first `/relay settings` user when the workspace has zero admins.
 
 Done means:
 - A fresh workspace can complete setup without direct database access.
@@ -68,10 +68,10 @@ Done means:
 ### 5. Connector + CRM Readiness
 
 Tasks:
-- Finish HubSpot company/account upsert.
-- Make Google Drive/GitHub connector setup admin-driven instead of dependent on local fallback env vars.
-- Encrypt connector credentials with the production key strategy.
-- Show sync status, last sync time, failure reason, and retry path.
+- Finish HubSpot company/account upsert. Initial HubSpot company upsert to `CustomerAccount` is present.
+- Make Google Drive/GitHub connector setup admin-driven instead of dependent on local fallback env vars. Initial beta setup modals are available through `/relay settings`.
+- Encrypt connector credentials with the production key strategy. Connector setup stores encrypted credentials in `SourceConnector`.
+- Show sync status, last sync time, failure reason, and retry path. `/relay settings` shows source status and can enqueue sync.
 
 Done means:
 - HubSpot sync creates or updates `CustomerAccount` rows from mocked or real HubSpot company payloads.
@@ -82,9 +82,9 @@ Done means:
 ### 6. Production Security + KMS
 
 Tasks:
-- Replace the current `KMS_PROVIDER=aws` guard with working AWS KMS encryption/decryption.
+- Replace the current `KMS_PROVIDER=aws` guard with working AWS KMS encryption/decryption. AWS KMS provider selection is enabled; live beta still needs AWS IAM/config smoke validation.
 - Store workspace DEKs using AWS KMS; keep legacy fallback only for migration.
-- Document IAM permissions and run the re-encryption script in dry-run mode before live use.
+- Document IAM permissions and run the re-encryption script in dry-run mode before live use. `scripts/smoke_kms.py` is available for throwaway DEK validation.
 - Review public/admin endpoints for auth, Slack verification, role checks, and redacted logs.
 
 Done means:
@@ -99,6 +99,7 @@ Tasks:
 - Run a real Slack Connect flow: install, register external channel, classify a customer question, alert owner, claim, generate draft, approve, post, index memory.
 - Validate connector purge, workspace deletion, uninstall cleanup, and individual user erasure.
 - Validate classifier on a small labeled beta dataset.
+- Use `docs/deployment/private-beta-acceptance.md` as the manual beta run script until Slack/AWS credentials are available in CI.
 
 Done means:
 - Full live flow succeeds in one test workspace without manual DB intervention.
