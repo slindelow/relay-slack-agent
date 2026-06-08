@@ -16,28 +16,32 @@
 | 6 — Feedback + Memory | Knowledge entries, impact metrics, `/relay ask`, `/relay pulse` | ✅ Complete locally | Local branch `claude/plan-6-feedback-memory` |
 | 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ✅ Complete locally — legal pages, scope doc, health/Sentry, deletion/purge, KMS, user erasure, reviewer sandbox, CI Celery health | Local branch `codex/plan-7-marketplace-readiness` |
 | 8 — Security Hardening | Admin/CSM guards, tenant-scoped action lookups, OAuth/erasure token hardening, deletion/audit cleanup, log redaction, retry/model config cleanup | ✅ Complete locally — full suite green | Local branch `claude/plan-8-security-hardening` |
+| 9 — Private Beta Launch | Deployment, Slack manifest/install path, onboarding UX, connector/CRM readiness, AWS KMS, live beta validation, external docs | 🚧 Active next plan | `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md` |
 
 ---
 
 ## Immediate Next Steps
 
-1. Push Plan 8 branch and open a PR for final review.
-2. Merge Plan 6/7/8 PRs in dependency order once CI/review are green.
+1. Keep Plan 9 as the active shared plan in `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`.
+2. Split Plan 9 into scoped PRs: deployment/distribution, onboarding UX, connector/CRM readiness, production KMS, live beta validation, and external packaging.
+3. Merge any remaining Plan 6/7/8 branches before product behavior branches that depend on them.
 
 ---
 
-## Critical Path to Marketplace
+## Critical Path to Private Beta, Then Marketplace
 
 ```
-Merge #9, #10, #11
+Plan 9A: deployable beta stack + Slack manifest/install path
        ↓
-Plan 4: Source Connectors + pgvector
+Plan 9B: admin onboarding + /relay settings + first-admin bootstrap
        ↓
-Plan 5: Drafting + Approval (first full product loop)
+Plan 9C: HubSpot upsert + admin-driven source connector setup
        ↓
-Plan 6: Feedback + Memory + Pulse
+Plan 9D: production AWS KMS + live beta security smoke
        ↓
-Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
+Plan 9E: live Slack Connect beta validation
+       ↓
+Marketplace submission package
 ```
 
 ---
@@ -50,14 +54,32 @@ Plan 7: KMS + Deletion + Privacy + Sandbox → SUBMIT
 | `tasks/prd-plan5-drafting-approval.md` | 5 — Drafting | Ready to execute |
 | `tasks/prd-plan6-feedback-memory.md` | 6 — Memory + Pulse | Ready to execute |
 | `tasks/prd-plan7-marketplace-readiness.md` | 7 — Marketplace | Ready to execute |
+| `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md` | 9 — Private Beta Launch | Active source of truth |
 
 ---
 
 ## Known TODOs (non-blocking)
 
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py`
-- HubSpot company upsert — stubbed in `relay/worker/hubspot_tasks.py`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
+- Production AWS KMS provider selection is implemented; live beta still needs IAM/config smoke validation before customer secrets use it.
+- Admin-driven connector setup exists for beta; full OAuth-based connector onboarding remains post-beta polish.
+
+## Plan 9 Progress
+
+- ✅ Created active Plan 9 source of truth in `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`.
+- ✅ Added private-beta AWS deployment runbook in `docs/deployment/private-beta-aws.md`.
+- ✅ Added checked-in Slack app manifest in `slack-app-manifest.yaml`.
+- ✅ Added minimal container artifacts (`Dockerfile`, `.dockerignore`) for web/worker/beat services.
+- ✅ Added public private-beta install page at `/`.
+- ✅ Added `/relay settings` setup summary and first-admin bootstrap for workspaces with zero admins.
+- ✅ Replaced HubSpot sync stub with workspace-scoped company-to-`CustomerAccount` upsert.
+- ✅ Enabled `KMS_PROVIDER=aws` provider selection with `KMS_KEY_ID` validation.
+- ✅ Added KMS smoke script (`scripts/smoke_kms.py`) and AWS IAM/runbook instructions.
+- ✅ Added manual private beta acceptance checklist in `docs/deployment/private-beta-acceptance.md`.
+- ✅ Added beta GitHub/Google Drive connector setup modals, encrypted credential storage, and sync enqueue from `/relay settings`.
+- ✅ Added DB-backed Slack installation store tests.
+- 🚧 Next: run AWS KMS smoke in beta infrastructure and live Slack Connect beta validation.
 
 ## Plan 6 Progress
 

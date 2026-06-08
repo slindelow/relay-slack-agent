@@ -22,7 +22,7 @@ Open PRs (pending merge, in dependency order):
 
 ## Source Of Truth
 - `RELAY_PRD.md`
-- `docs/PLAN_1_FOUNDATION.md`
+- `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 - `docs/CLAUDE_OPERATING_BRIEF.md`
 - This file
 
@@ -38,6 +38,34 @@ Open PRs (pending merge, in dependency order):
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Codex — 2026-06-08 (Plan 9 private beta launch start)
+Branch: `main`
+Status: Plan 9 is now the active shared next plan for turning RELAY into an installable private-beta Slack product before Marketplace submission.
+
+Work completed:
+- Added `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md` as the global Plan 9 source of truth.
+- Added `docs/deployment/private-beta-aws.md` for the AWS-oriented beta deployment path.
+- Added `slack-app-manifest.yaml` for Slack private-beta app configuration.
+- Added minimal container artifacts (`Dockerfile`, `.dockerignore`).
+- Updated `tasks/STATUS.md` and `docs/CLAUDE_OPERATING_BRIEF.md` so fresh Codex/Claude workers start from Plan 9.
+- Added `/` private-beta install page and `/relay settings` setup summary.
+- Added first-admin bootstrap through `/relay settings` for newly installed workspaces with zero admins.
+- Replaced HubSpot company sync stub with `CustomerAccount` upsert behavior.
+- Added DB-backed Slack installation store coverage for OAuth save/find-bot behavior.
+- Added beta connector setup from `/relay settings`: GitHub token/repo modal, Google Drive credential/folder modal, encrypted `SourceConnector` upsert, and sync enqueue.
+- Added `scripts/smoke_kms.py` and AWS IAM/runbook instructions for throwaway KMS validation.
+- Added `docs/deployment/private-beta-acceptance.md` as the manual live beta run script.
+
+Next recommended branches:
+1. `codex/plan-9-deployment-distribution` — deploy stack, install page, manifest validation, smoke docs.
+2. `codex/plan-9-admin-onboarding` — `/relay settings`, App Home setup state, first-admin bootstrap.
+3. `claude/plan-9-security-kms-review` — AWS KMS implementation review and endpoint/security pass.
+4. `codex/plan-9-live-beta-validation` — AWS KMS smoke, Slack Connect beta run, and follow-up fixes.
+
+Open launch blockers:
+- Production AWS KMS provider selection is implemented; live beta still needs IAM/config smoke validation before customer secrets use it.
+- Live Slack Connect beta flow has not been validated end to end.
 
 ### Claude — 2026-06-08 (Plan 8 security hardening)
 Branch: `claude/plan-8-security-hardening` → **PR #18 open**

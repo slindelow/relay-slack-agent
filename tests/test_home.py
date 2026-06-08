@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from relay.slack.home import build_home
+from relay.slack.home import SetupState, build_home
 
 
 def _make_connector(connector_type: str, sync_status: str, last_synced_at: datetime | None = None) -> MagicMock:
@@ -23,6 +23,22 @@ def test_build_home_no_connectors():
     blocks = build_home([])
     texts = [b.get("text", {}).get("text", "") for b in blocks]
     assert any("No sources connected" in t for t in texts)
+
+
+def test_build_home_setup_state_reflects_progress():
+    blocks = build_home(
+        [],
+        setup_state=SetupState(
+            admin_count=1,
+            channel_count=1,
+            crm_connected=True,
+            source_count=0,
+        ),
+    )
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+    assert "RELAY admin configured" in text
+    assert "HubSpot CRM connected" in text
+    assert ":white_circle: Knowledge source connected" in text
 
 
 def test_build_home_with_google_drive_connector():
@@ -145,3 +161,76 @@ def test_build_home_accuracy_metrics_section():
     assert "Corrections this week" in joined
     assert "2" in joined
     assert "90.0%" in joined
+
+
+# ---------------------------------------------------------------------------
+# Dynamic setup checklist
+# ---------------------------------------------------------------------------
+
+def _all_texts(blocks: list) -> str:
+    parts = []
+    for b in blocks:
+        t = b.get("text", {})
+        if isinstance(t, dict):
+            parts.append(t.get("text", ""))
+        for f in b.get("fields", []):
+            parts.append(f.get("text", ""))
+    return "\n".join(parts)
+
+
+def test_setup_checklist_all_incomplete():
+    blocks = build_home([], setup_state=SetupState())
+    texts = _all_texts(blocks)
+    assert ":white_circle: RELAY admin configured" in texts
+    assert ":white_circle: Customer Slack Connect channel registered" in texts
+    assert ":white_circle: HubSpot CRM connected" in texts
+    assert ":white_circle: Knowledge source connected" in texts
+
+
+def test_setup_checklist_partial_completion():
+    state = SetupState(admin_count=1, channel_count=1, crm_connected=False, source_count=0)
+    blocks = build_home([], setup_state=state)
+    texts = _all_texts(blocks)
+    assert ":white_check_mark: RELAY admin configured" in texts
+    assert ":white_check_mark: Customer Slack Connect channel registered" in texts
+    assert ":white_circle: HubSpot CRM connected" in texts
+    assert ":white_circle: Knowledge source connected" in texts
+
+
+def test_setup_checklist_all_complete():
+    state = SetupState(admin_count=2, channel_count=3, crm_connected=True, source_count=1)
+    blocks = build_home([], setup_state=state)
+    texts = _all_texts(blocks)
+    assert ":white_check_mark: RELAY admin configured" in texts
+    assert ":white_check_mark: Customer Slack Connect channel registered" in texts
+    assert ":white_check_mark: HubSpot CRM connected" in texts
+    assert ":white_check_mark: Knowledge source connected" in texts
+    assert "Setup complete" in texts
+
+
+def test_error_connector_shows_retry_sync_button():
+    connector = _make_connector("github", "error", datetime.now(UTC) - timedelta(hours=1))
+    blocks = build_home([connector])
+    action_blocks = [b for b in blocks if b.get("type") == "actions"]
+    retry_elements = [
+        el
+        for b in action_blocks
+        for el in b.get("elements", [])
+        if el.get("action_id") == "relay_sync_connector"
+    ]
+    assert len(retry_elements) == 1
+    assert retry_elements[0]["text"]["text"] == "Retry sync"
+    assert retry_elements[0]["value"] == str(connector.id)
+
+
+def test_synced_connector_has_no_retry_button():
+    connector = _make_connector("github", "synced", datetime.now(UTC) - timedelta(hours=1))
+    blocks = build_home([connector])
+    action_blocks = [b for b in blocks if b.get("type") == "actions"]
+    retry_elements = [
+        el
+        for b in action_blocks
+        for el in b.get("elements", [])
+        if el.get("action_id") == "relay_sync_connector"
+    ]
+    assert len(retry_elements) == 0

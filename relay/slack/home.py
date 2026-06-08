@@ -5,12 +5,21 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from relay.slack.app import app
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SetupState:
+    admin_count: int = 0
+    channel_count: int = 0
+    crm_connected: bool = False
+    source_count: int = 0
 
 _CONNECTOR_ICONS = {
     "google_drive": ":page_facing_up:",
@@ -83,6 +92,17 @@ def _connector_blocks(connector_rows: list[Any]) -> list[dict]:
                 "style": "danger",
             },
         })
+
+        if row.sync_status == "error":
+            blocks.append({
+                "type": "actions",
+                "elements": [{
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Retry sync"},
+                    "action_id": "relay_sync_connector",
+                    "value": str(row.id),
+                }],
+            })
 
     return blocks
 
@@ -216,6 +236,34 @@ def _accuracy_blocks(feedback_rows: list[Any], total_questions: int, export_url:
     return blocks
 
 
+def _mark(done: bool) -> str:
+    return ":white_check_mark:" if done else ":white_circle:"
+
+
+def _setup_checklist_blocks(state: SetupState) -> list[dict]:
+    """Build the setup checklist block from actual workspace DB state."""
+    lines = [
+        f"{_mark(state.admin_count > 0)} RELAY admin configured",
+        f"{_mark(state.channel_count > 0)} Customer Slack Connect channel registered",
+        f"{_mark(state.crm_connected)} HubSpot CRM connected",
+        f"{_mark(state.source_count > 0)} Knowledge source connected",
+    ]
+    all_done = all([
+        state.admin_count > 0,
+        state.channel_count > 0,
+        state.crm_connected,
+        state.source_count > 0,
+    ])
+    header = ":tada: Setup complete" if all_done else "*Setup checklist*"
+    return [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"{header}\n" + "\n".join(lines)},
+        },
+        {"type": "divider"},
+    ]
+
+
 def build_home(
     connector_rows: list[Any],
     questions_needing_draft: list[Any] | None = None,
@@ -223,8 +271,9 @@ def build_home(
     feedback_rows: list[Any] | None = None,
     total_questions_7d: int = 0,
     feedback_export_url: str = "",
+    setup_state: SetupState | None = None,
 ) -> list[dict]:
-    """Return the full App Home block list given a list of SourceConnector rows."""
+    """Return the full App Home block list."""
     base_blocks: list[dict] = [
         {"type": "header", "text": {"type": "plain_text", "text": "RELAY"}},
         {
@@ -235,22 +284,11 @@ def build_home(
             },
         },
         {"type": "divider"},
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": (
-                    "*Setup checklist*\n"
-                    ":white_circle: Register a customer channel\n"
-                    ":white_circle: Connect CRM and knowledge sources\n"
-                    ":white_circle: Assign account owners"
-                ),
-            },
-        },
-        {"type": "divider"},
     ]
+    checklist = _setup_checklist_blocks(setup_state or SetupState())
     return (
         base_blocks
+        + checklist
         + _connector_blocks(connector_rows)
         + _draft_queue_blocks(questions_needing_draft or [])
         + _impact_blocks(impact_rows or [])
@@ -268,6 +306,7 @@ async def publish_app_home(event, client, body):
     feedback_rows: list[Any] = []
     total_questions_7d = 0
     feedback_export_url = ""
+    setup_state: SetupState = SetupState()
     if team_id:
         try:
             from datetime import timedelta
@@ -275,7 +314,7 @@ async def publish_app_home(event, client, body):
             from sqlalchemy import func, select
 
             from relay.config import get_settings
-            from relay.db.models import Draft, FeedbackSignal, ImpactMetric, Question, QuestionState, SourceConnector, Workspace
+            from relay.db.models import CrmConnection, Draft, FeedbackSignal, ImpactMetric, MonitoredChannel, Question, QuestionState, SourceConnector, User, Workspace
             from relay.db.session import get_session
 
             feedback_export_url = f"{get_settings().app_base_url}/relay/admin/feedback-export"
@@ -295,6 +334,32 @@ async def publish_app_home(event, client, body):
                         )
                     )
                     connector_rows = list(conn_result.scalars())
+
+                    admin_count_r = await session.execute(
+                        select(func.count()).select_from(User).where(
+                            User.workspace_id == workspace.id,
+                            User.relay_role == "admin",
+                            User.deleted_at.is_(None),
+                        )
+                    )
+                    channel_count_r = await session.execute(
+                        select(func.count()).select_from(MonitoredChannel).where(
+                            MonitoredChannel.workspace_id == workspace.id,
+                            MonitoredChannel.is_active.is_(True),
+                        )
+                    )
+                    crm_count_r = await session.execute(
+                        select(func.count()).select_from(CrmConnection).where(
+                            CrmConnection.workspace_id == workspace.id,
+                            CrmConnection.disconnected_at.is_(None),
+                        )
+                    )
+                    setup_state = SetupState(
+                        admin_count=int(admin_count_r.scalar_one() or 0),
+                        channel_count=int(channel_count_r.scalar_one() or 0),
+                        crm_connected=int(crm_count_r.scalar_one() or 0) > 0,
+                        source_count=len(connector_rows),
+                    )
 
                     # Claimed questions with no pending/approved draft
                     active_draft_q_ids = select(Draft.question_id).where(
@@ -352,6 +417,7 @@ async def publish_app_home(event, client, body):
         feedback_rows,
         total_questions_7d,
         feedback_export_url,
+        setup_state=setup_state,
     )
     await client.views_publish(
         user_id=event["user"],

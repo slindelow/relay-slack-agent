@@ -1,14 +1,17 @@
 """Workspace install lifecycle helpers."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.config import get_settings
 from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
-from relay.db.models import SlaPolicy, Workspace, WorkspaceSettings, WorkspaceToken
+from relay.db.models import SlaPolicy, User, Workspace, WorkspaceSettings, WorkspaceToken
+
+logger = logging.getLogger(__name__)
 
 
 async def _set_workspace_context(session: AsyncSession, workspace_id: uuid.UUID) -> None:
@@ -52,6 +55,40 @@ async def upsert_workspace_from_install(
         workspace.installed_at = datetime.now(timezone.utc)
 
     return workspace
+
+
+async def bootstrap_first_admin(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    installer_slack_user_id: str,
+) -> None:
+    """Promote the installing user to admin if no admin exists yet for this workspace."""
+    count_result = await session.execute(
+        select(func.count()).select_from(User).where(
+            User.workspace_id == workspace_id,
+            User.relay_role == "admin",
+            User.deleted_at.is_(None),
+        )
+    )
+    if (count_result.scalar_one() or 0) > 0:
+        return
+
+    user_result = await session.execute(
+        select(User).where(
+            User.workspace_id == workspace_id,
+            User.slack_user_id == installer_slack_user_id,
+        )
+    )
+    user = user_result.scalar_one_or_none()
+    if user is not None:
+        user.relay_role = "admin"
+    else:
+        session.add(User(
+            workspace_id=workspace_id,
+            slack_user_id=installer_slack_user_id,
+            relay_role="admin",
+        ))
+    logger.info("bootstrap_first_admin workspace=%s user=%s", workspace_id, installer_slack_user_id)
 
 
 async def store_bot_token(

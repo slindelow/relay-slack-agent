@@ -3,6 +3,7 @@
 from relay.commands.ask import handle_ask
 from relay.commands.pulse import handle_pulse
 from relay.commands.register import handle_register
+from relay.commands.settings import handle_settings
 from relay.slack.app import app
 
 
@@ -32,6 +33,13 @@ async def relay_help(ack, respond, command, client=None):
             pass
 
         await handle_pulse(ack=_noop_ack, respond=respond, command=command)
+        return
+
+    if subcommand == "settings":
+        async def _noop_ack():
+            pass
+
+        await handle_settings(ack=_noop_ack, respond=respond, command=command)
         return
 
     if subcommand == "delete-workspace-data":
@@ -65,8 +73,8 @@ async def relay_help(ack, respond, command, client=None):
                     "type": "mrkdwn",
                     "text": (
                         "• `/relay help` - Show this message\n"
+                        "• `/relay settings` - Check private beta setup status\n"
                         "• `/relay register #channel account tier @owner` - Register a customer channel\n"
-                        "• `/relay open` - Planned in Plan 3\n"
                         "• `/relay ask [question]` - Search connected knowledge sources\n"
                         "• `/relay pulse [account]` - Show account health digest\n"
                         "• `/relay delete-workspace-data` - Permanently delete workspace data"

@@ -10,8 +10,8 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
 
-from relay.db.models import SlaPolicy, Workspace, WorkspaceSettings, WorkspaceToken
-from relay.slack.oauth import store_bot_token, upsert_workspace_from_install
+from relay.db.models import SlaPolicy, User, Workspace, WorkspaceSettings, WorkspaceToken
+from relay.slack.oauth import bootstrap_first_admin, store_bot_token, upsert_workspace_from_install
 
 
 # ---------------------------------------------------------------------------
@@ -180,3 +180,78 @@ async def test_store_bot_token_stores_scopes(db_session, relay_settings):
     await db_session.flush()
 
     assert token.scopes == "chat:write,users:read"
+
+
+# ---------------------------------------------------------------------------
+# bootstrap_first_admin
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_bootstrap_creates_first_admin(db_session, relay_settings):
+    workspace = await upsert_workspace_from_install(
+        db_session, slack_team_id="T_BOOTSTRAP_001", slack_team_name="Acme"
+    )
+    await db_session.flush()
+
+    await bootstrap_first_admin(db_session, workspace.id, "U_INSTALLER")
+    await db_session.flush()
+
+    result = await db_session.execute(
+        select(User).where(
+            User.workspace_id == workspace.id,
+            User.slack_user_id == "U_INSTALLER",
+        )
+    )
+    user = result.scalar_one_or_none()
+    assert user is not None
+    assert user.relay_role == "admin"
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_promotes_existing_viewer(db_session, relay_settings):
+    workspace = await upsert_workspace_from_install(
+        db_session, slack_team_id="T_BOOTSTRAP_002", slack_team_name="Acme"
+    )
+    await db_session.flush()
+    await db_session.execute(
+        text("SELECT set_config('app.current_workspace_id', :wid, true)"),
+        {"wid": str(workspace.id)},
+    )
+
+    viewer = User(workspace_id=workspace.id, slack_user_id="U_VIEWER", relay_role="viewer")
+    db_session.add(viewer)
+    await db_session.flush()
+
+    await bootstrap_first_admin(db_session, workspace.id, "U_VIEWER")
+    await db_session.flush()
+    await db_session.refresh(viewer)
+
+    assert viewer.relay_role == "admin"
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_skips_when_admin_exists(db_session, relay_settings):
+    workspace = await upsert_workspace_from_install(
+        db_session, slack_team_id="T_BOOTSTRAP_003", slack_team_name="Acme"
+    )
+    await db_session.flush()
+    await db_session.execute(
+        text("SELECT set_config('app.current_workspace_id', :wid, true)"),
+        {"wid": str(workspace.id)},
+    )
+
+    existing_admin = User(workspace_id=workspace.id, slack_user_id="U_EXISTING_ADMIN", relay_role="admin")
+    db_session.add(existing_admin)
+    await db_session.flush()
+
+    await bootstrap_first_admin(db_session, workspace.id, "U_NEW_INSTALLER")
+    await db_session.flush()
+
+    result = await db_session.execute(
+        select(User).where(
+            User.workspace_id == workspace.id,
+            User.slack_user_id == "U_NEW_INSTALLER",
+        )
+    )
+    new_user = result.scalar_one_or_none()
+    assert new_user is None

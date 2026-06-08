@@ -64,12 +64,15 @@ def ensure_workspace_dek(workspace, fallback_key: bytes, kms_client: KMSProvider
 
 
 def kms_provider_from_settings(settings) -> KMSProvider | None:
-    if settings.kms_provider.lower() == "aws":
-        raise NotImplementedError(
-            "AWS KMS provider is not yet implemented. "
-            "Set KMS_PROVIDER=local for dev/test deployments."
-        )
-    return None
+    provider_value = getattr(settings, "kms_provider", "none")
+    provider = provider_value.lower() if isinstance(provider_value, str) else "none"
+    if provider in {"", "none", "local"}:
+        return None
+    if provider == "aws":
+        if not settings.kms_key_id:
+            raise ValueError("KMS_KEY_ID is required when KMS_PROVIDER=aws")
+        return AWSKMSProvider(settings.kms_key_id)
+    raise ValueError(f"Unsupported KMS_PROVIDER: {settings.kms_provider}")
 
 
 def encrypt_token(plaintext: str, master_key: bytes) -> tuple[bytes, bytes]:
