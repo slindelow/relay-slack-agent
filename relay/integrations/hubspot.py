@@ -123,7 +123,7 @@ async def exchange_code_for_tokens(
 
     if response.status_code != 200:
         raise HubSpotOAuthError(
-            f"Token exchange failed: {response.status_code} {response.text}"
+            f"Token exchange failed: {response.status_code} [body redacted]"
         )
     return response.json()
 
@@ -151,7 +151,7 @@ async def refresh_access_token(
 
     if response.status_code != 200:
         raise HubSpotOAuthError(
-            f"Token refresh failed: {response.status_code} {response.text}"
+            f"Token refresh failed: {response.status_code} [body redacted]"
         )
     return response.json()
 
@@ -181,7 +181,7 @@ async def fetch_hubspot_companies(
 
     if response.status_code != 200:
         raise HubSpotAPIError(
-            f"Companies fetch failed: {response.status_code} {response.text}"
+            f"Companies fetch failed: {response.status_code} [body redacted]"
         )
     return response.json().get("results", [])
 

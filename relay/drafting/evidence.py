@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-import inspect
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -80,8 +79,6 @@ async def assemble_evidence(
         )
     )
     row = q_result.one_or_none()
-    if inspect.isawaitable(row):
-        row = await row
     if row is None:
         raise ValueError(f"Question {question_id} not found")
 

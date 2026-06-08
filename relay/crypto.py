@@ -64,8 +64,11 @@ def ensure_workspace_dek(workspace, fallback_key: bytes, kms_client: KMSProvider
 
 
 def kms_provider_from_settings(settings) -> KMSProvider | None:
-    if settings.kms_provider.lower() == "aws" and settings.kms_key_id:
-        return AWSKMSProvider(settings.kms_key_id)
+    if settings.kms_provider.lower() == "aws":
+        raise NotImplementedError(
+            "AWS KMS provider is not yet implemented. "
+            "Set KMS_PROVIDER=local for dev/test deployments."
+        )
     return None
 
 

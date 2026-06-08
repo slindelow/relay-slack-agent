@@ -15,8 +15,6 @@ from relay.db.models import CustomerAccount, Draft, KnowledgeEntry, Question
 
 logger = logging.getLogger(__name__)
 
-_SUMMARY_MODEL = "claude-haiku-4-5-20251001"
-
 
 async def index_approved_response(
     workspace_id: uuid.UUID,
@@ -95,7 +93,7 @@ async def _summarize_resolution(customer_question: str, internal_answer: str) ->
         settings = get_settings()
         client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         response = await client.messages.create(
-            model=_SUMMARY_MODEL,
+            model=settings.summary_model,
             max_tokens=120,
             messages=[{"role": "user", "content": prompt}],
         )

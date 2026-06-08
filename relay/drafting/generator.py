@@ -125,26 +125,32 @@ async def _call_with_retry(client, model: str, user_message: str) -> DraftOutput
             messages=[{"role": "user", "content": user_message}],
         )
 
-        for block in response.content:
-            if block.type == "tool_use" and block.name == _DRAFT_TOOL_NAME:
-                data = block.input
-                try:
-                    return DraftOutput(
-                        summary=str(data["summary"]),
-                        evidence=list(data.get("evidence", [])),
-                        confidence=float(data["confidence"]),
-                        customer_draft=str(data["customer_draft"]),
-                        internal_brief=str(data["internal_brief"]),
-                        risks_or_unknowns=str(data.get("risks_or_unknowns", "")),
-                        recommended_next_action=str(data.get("recommended_next_action", "")),
-                    )
-                except (KeyError, TypeError, ValueError) as exc:
-                    if attempt == 0:
-                        logger.warning("generate_draft: schema mismatch on attempt 1, retrying: %s", exc)
-                        continue
-                    raise
+        tool_use_block = next(
+            (b for b in response.content if b.type == "tool_use" and b.name == _DRAFT_TOOL_NAME),
+            None,
+        )
+        if tool_use_block is None:
+            # Model did not call the tool — not retryable
+            break
 
-    raise RuntimeError("generate_draft: LLM did not return valid structured output after 2 attempts")
+        data = tool_use_block.input
+        try:
+            return DraftOutput(
+                summary=str(data["summary"]),
+                evidence=list(data.get("evidence", [])),
+                confidence=float(data["confidence"]),
+                customer_draft=str(data["customer_draft"]),
+                internal_brief=str(data["internal_brief"]),
+                risks_or_unknowns=str(data.get("risks_or_unknowns", "")),
+                recommended_next_action=str(data.get("recommended_next_action", "")),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            if attempt == 0:
+                logger.warning("generate_draft: schema mismatch on attempt 1, retrying: %s", exc)
+                continue
+            raise
+
+    raise RuntimeError("Draft generation failed: model did not produce a valid tool call")
 
 
 async def _save_draft(
