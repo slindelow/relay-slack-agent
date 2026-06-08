@@ -61,6 +61,7 @@ _DELETE_ORDER = (
     SlaPolicy,
     CrmConnection,
     ClassificationFeedback,
+    AuditLog,
 )
 
 

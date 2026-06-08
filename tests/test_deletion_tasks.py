@@ -342,3 +342,20 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
         assert workspace is None
         assert job is not None
         assert job.status == "complete"
+
+
+def test_cascade_order_includes_audit_log():
+    """audit_log must appear in the cascade deletion order."""
+    assert "audit_log" in [model.__tablename__ for model in _DELETE_ORDER]
+    # Must come after users so user references are deleted before audit rows
+    names = [model.__tablename__ for model in _DELETE_ORDER]
+    assert names.index("audit_log") > names.index("users")
+
+
+def test_poller_uses_is_revoked_flag():
+    """Regression: SLA poller must filter on is_revoked=False, not revoked_at IS NULL."""
+    import inspect
+    import relay.sla.poller as poller_module
+    source = inspect.getsource(poller_module)
+    assert "is_revoked.is_(False)" in source, "Poller must use is_revoked flag"
+    assert "revoked_at.is_(None)" not in source, "Poller must not use revoked_at for revocation check"

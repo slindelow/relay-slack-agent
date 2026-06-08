@@ -187,7 +187,7 @@ async def _alert_question(
             select(WorkspaceToken).where(
                 WorkspaceToken.workspace_id == workspace_id,
                 WorkspaceToken.token_type == "bot",
-                WorkspaceToken.revoked_at.is_(None),
+                WorkspaceToken.is_revoked.is_(False),
             )
         )
         token_row = token_result.scalar_one_or_none()
