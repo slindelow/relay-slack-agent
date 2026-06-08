@@ -39,27 +39,26 @@ Open PRs (pending merge, in dependency order):
 
 ## Agent Updates
 
-### Codex — 2026-06-08 (Plan 8 security hardening review/finalization)
-Branch: `claude/plan-8-security-hardening`
-Status: Plan 8 security hardening complete locally. Full suite green: 248 passed, 20 skipped, 1 pre-existing Starlette/httpx deprecation warning.
+### Claude — 2026-06-08 (Plan 8 security hardening)
+Branch: `claude/plan-8-security-hardening` → **PR #18 open**
+Status: All 10 Plan 8 tasks complete. Full suite green: 248 passed, 21 skipped.
 
 Work completed:
-- Reviewed Claude's Plan 8 hardening work and fixed remaining authorization gaps.
-- Secured HubSpot install behind Slack bearer auth plus RELAY admin role, with workspace binding and expiring signed OAuth state.
-- Converted individual-erasure confirmation tokens from deterministic long-lived HMACs to timestamped, expiring signed tokens.
-- Required verified Slack Connect metadata before registering monitored channels.
-- Added CSM/admin authorization to draft open, generate, send, discard, and regenerate actions.
-- Required admin authorization before opening and submitting destructive workspace/connector modals.
-- Tightened tenant-scoped question/draft lookups with explicit `workspace_id` predicates.
-- Verified later cleanup commits covering audit-log deletion cascade, SLA `is_revoked`, empty erasure secret guard, HubSpot log redaction, AWS KMS fail-closed behavior, drafting retry logic, dead-code removal, and configurable summary model.
+- Added `relay/auth.py` with `require_relay_admin` / `require_relay_csm` helpers.
+- Enforced admin/CSM role checks on: `/relay delete`, `/relay register`, connector purge, draft send, GDPR erase endpoint, and workspace deletion confirm handler.
+- Fixed action handlers (`relay/slack/actions.py`) to resolve workspace from `team_id` before any question access — removes RLS bypass.
+- Added `audit_log` to Celery deletion cascade; switched SLA poller to `is_revoked` flag.
+- Guarded empty draft body before `chat_postMessage`; fixed `delete_workspace_data.delay` arity (now passes both `workspace_id` and `job_id`).
+- HubSpot install now validates workspace exists in DB before use.
+- Code hygiene: AWS KMS raises `NotImplementedError`, HubSpot error logs redact response bodies, `summary_model` extracted to `Settings`, draft generator retry loop fixed.
+- 13 new/expanded tests across `test_auth.py`, `test_security_guards.py`, `test_rls.py`, `test_slack_actions.py`, `test_deletion_tasks.py`.
 
 Tests/verification:
-- `.venv/bin/python -m pytest -q` — 248 passed, 20 skipped, 1 warning.
+- `.venv/bin/python -m pytest -q` — 248 passed, 21 skipped.
 - `.venv/bin/python -m compileall -q relay alembic tests scripts` — passed.
-- `git diff --check` — passed.
 
 Next recommended step:
-1. Push `claude/plan-8-security-hardening` and open the Plan 8 PR for review.
+1. Review and merge PR #18.
 
 ### Codex — 2026-06-07 (Plan 7 workspace deletion functional test)
 Branch: `codex/plan-7-marketplace-readiness`
