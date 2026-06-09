@@ -13,7 +13,7 @@ RUN uv sync --locked --no-dev
 
 COPY . .
 
-RUN chmod +x scripts/start_web.sh
+RUN chmod +x scripts/start_web.sh scripts/start_worker.sh
 
 EXPOSE 3000
 
