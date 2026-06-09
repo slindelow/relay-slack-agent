@@ -52,6 +52,20 @@ def _env(name: str) -> str:
     return os.environ.get(name, "").strip()
 
 
+def load_env_file(path: Path) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"env file not found: {path}")
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def _check_required_env() -> list[CheckResult]:
     results: list[CheckResult] = []
     for name in REQUIRED_ENV:
@@ -146,9 +160,17 @@ def _print_section(title: str, results: list[CheckResult]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--env-file", type=Path, help="load beta env vars from a local ignored file")
     parser.add_argument("--live", action="store_true", help="also call /health and run KMS smoke")
     parser.add_argument("--timeout", type=int, default=5, help="HTTP timeout for live checks")
     args = parser.parse_args()
+
+    if args.env_file:
+        try:
+            load_env_file(args.env_file)
+        except FileNotFoundError as exc:
+            print(f"Preflight failed: {exc}", file=sys.stderr)
+            return 1
 
     required, optional = run_checks(live=args.live, timeout=args.timeout)
     _print_section("Required", required)

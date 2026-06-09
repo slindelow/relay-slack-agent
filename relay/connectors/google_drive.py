@@ -44,8 +44,6 @@ class GoogleDriveConnector(Connector):
     """Syncs a Google Drive folder into RELAY knowledge_chunks."""
 
     async def sync(self, workspace_id: uuid.UUID, connector_id: uuid.UUID) -> None:
-        from relay.config import get_settings
-
         settings = get_settings()
         async with get_session(workspace_id) as session:
             result = await session.execute(

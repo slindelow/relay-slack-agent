@@ -97,3 +97,35 @@ def test_optional_missing_values_render_as_warnings(monkeypatch, capsys):
 
     output = capsys.readouterr()
     assert "[WARN] SENTRY_DSN is not set" in output.out
+
+
+def test_load_env_file_sets_missing_values(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.beta"
+    env_file.write_text(
+        "\n".join([
+            "# beta settings",
+            "APP_BASE_URL=https://relay-beta.example.com",
+            "KMS_PROVIDER='aws'",
+            'KMS_KEY_ID="arn:aws:kms:test"',
+            "",
+        ])
+    )
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    monkeypatch.delenv("KMS_PROVIDER", raising=False)
+    monkeypatch.delenv("KMS_KEY_ID", raising=False)
+
+    beta_preflight.load_env_file(env_file)
+
+    assert beta_preflight._env("APP_BASE_URL") == "https://relay-beta.example.com"
+    assert beta_preflight._env("KMS_PROVIDER") == "aws"
+    assert beta_preflight._env("KMS_KEY_ID") == "arn:aws:kms:test"
+
+
+def test_load_env_file_does_not_override_exported_values(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env.beta"
+    env_file.write_text("APP_BASE_URL=https://from-file.example.com\n")
+    monkeypatch.setenv("APP_BASE_URL", "https://from-shell.example.com")
+
+    beta_preflight.load_env_file(env_file)
+
+    assert beta_preflight._env("APP_BASE_URL") == "https://from-shell.example.com"
