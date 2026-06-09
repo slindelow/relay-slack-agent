@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from os import environ
+from pathlib import Path
+from types import SimpleNamespace
 
-from relay.config import get_settings
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from relay.crypto import (
     decrypt_token,
     encrypt_token,
@@ -24,7 +28,10 @@ class SmokeResult:
 
 
 def run_smoke(settings=None) -> SmokeResult:
-    settings = settings or get_settings()
+    settings = settings or SimpleNamespace(
+        kms_provider=environ.get("KMS_PROVIDER", ""),
+        kms_key_id=environ.get("KMS_KEY_ID", ""),
+    )
     provider = kms_provider_from_settings(settings)
     if provider is None:
         raise RuntimeError("KMS_PROVIDER=aws and KMS_KEY_ID are required for KMS smoke testing")

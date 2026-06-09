@@ -39,6 +39,28 @@ Open PRs: none.
 
 ## Agent Updates
 
+### Codex — 2026-06-09 (Operational launch step-through)
+Branch: `codex/plan-9-kms-smoke-runner`
+Status: Local stabilization complete; AWS/Slack beta execution remains blocked on external credentials and tooling.
+
+Work completed:
+- Verified clean `main` before starting operational step-through.
+- Ran full local baseline: `.venv/bin/python -m pytest -q` — 286 passed, 28 skipped, 1 warning.
+- Ran `.venv/bin/python -m compileall -q relay tests scripts` and `git diff --check` — both passed.
+- Ran the documented KMS smoke command locally and found the script could not import `relay` when executed as `python scripts/smoke_kms.py`.
+- Fixed `scripts/smoke_kms.py` so it runs from the documented path and only requires `KMS_PROVIDER` / `KMS_KEY_ID` instead of the full app settings object.
+- Added CLI-level regression coverage in `tests/test_kms_smoke_script.py`.
+
+Blocked external steps:
+1. AWS KMS smoke cannot complete from this workstation because no `KMS_PROVIDER`, `KMS_KEY_ID`, AWS credentials/role, or `aws` CLI are available here. The script now fails cleanly with `KMS_PROVIDER=aws and KMS_KEY_ID are required for KMS smoke testing`.
+2. AWS deployment cannot be run from this workstation because Docker/AWS tooling and beta account credentials are not available here.
+3. Live Slack Connect beta validation still requires a deployed `APP_BASE_URL`, Slack app credentials, and a friendly Slack Connect test workspace.
+
+Next recommended action:
+1. Merge the smoke-runner fix.
+2. Run `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` from the beta AWS runtime or an operator shell with the ECS task role permissions.
+3. After KMS smoke passes, deploy web/worker/beat, configure Slack manifest, and run `docs/deployment/private-beta-acceptance.md`.
+
 ### Claude — 2026-06-08 (Plan 9 merge + handoff)
 Branch: `claude/plan-9a-foundation` → **PR #19 merged to main**
 Status: All Plan 9 code merged. 286 passed, 28 skipped, 1 warning.
