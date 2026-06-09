@@ -12,6 +12,7 @@ Merged to `main` (all plans):
 - PRs #1–18: Plans 1–8 (foundation → security hardening)
 - PR #19 (`claude/plan-9a-foundation`): Plan 9 — multi-workspace OAuth, connector UI, KMS, deployment artifacts, beta docs — **merged 2026-06-08**
 - PR #20 (`codex/plan-9-kms-smoke-runner`): KMS smoke runner and beta preflight tooling — **merged 2026-06-09**
+- PR #21 (`codex/plan-9-beta-env-preflight`): `.env.beta` preflight loading, Railway deploy config, local KMS smoke mode — **merged 2026-06-09**
 
 Open PRs: none.
 
@@ -40,6 +41,22 @@ Open PRs: none.
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Codex — 2026-06-09 (Operational status after PR #21)
+Branch: `main` → `codex/plan-9-operational-handoff-update`
+Status: PR #21 merged; remaining work is blocked on external deployment credentials and beta workspace setup.
+
+Work completed:
+- Merged PR #21 after CI passed.
+- Verified local `main` is clean and aligned with `origin/main`.
+- Verified local KMS smoke mode: `.venv/bin/python scripts/smoke_kms.py` prints `KMS smoke ok: provider=none key_id=local`.
+- Confirmed beta preflight is ready but cannot run without `.env.beta`: `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta` fails with `env file not found: .env.beta`.
+- Confirmed AWS is not usable from this shell yet: `aws sts get-caller-identity` fails with `NoCredentials`, and `aws configure list` shows no profile, access key, secret key, or region.
+
+Next external inputs needed:
+1. A local ignored `.env.beta` or exported beta env vars with `APP_BASE_URL`, Slack OAuth credentials, database/Redis URLs, `TOKEN_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `KMS_PROVIDER=aws`, and `KMS_KEY_ID`.
+2. AWS login/profile/region or Railway token/project access, depending on the chosen beta host.
+3. Slack app credentials and a friendly Slack Connect beta workspace.
 
 ### Codex — 2026-06-09 (Beta env preflight follow-up)
 Branch: `codex/plan-9-beta-env-preflight`

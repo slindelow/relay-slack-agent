@@ -48,7 +48,7 @@ The remaining blockers are operational, not code:
 
 - Active shared plan: `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 - AWS deployment runbook: `docs/deployment/private-beta-aws.md`
-- End-to-end validation checklist: `docs/deployment/beta-validation-checklist.md`
+- End-to-end validation checklist: `docs/deployment/private-beta-acceptance.md`
 - Non-technical user guide for CS admins: `docs/beta-user-guide.md`
 - Slack app manifest: `slack-app-manifest.yaml`
 - Local dev quickstart: `scripts/start-local.sh`
