@@ -17,8 +17,9 @@ Open PRs: none.
 ## Launch Blockers (Operational — require external credentials)
 1. **Deploy to AWS**: ECS/Fargate web + worker + beat, RDS pgvector, ElastiCache Redis, KMS key, Secrets Manager — see `docs/deployment/private-beta-aws.md`.
 2. **Configure Slack app**: Run `scripts/configure-manifest.sh <APP_BASE_URL>`, paste manifest into https://api.slack.com/apps, update `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `SLACK_SIGNING_SECRET`.
-3. **Run KMS smoke check**: `KMS_PROVIDER=aws KMS_KEY_ID=<arn> uv run python scripts/smoke_kms.py` — must print `KMS smoke ok` before storing customer secrets.
-4. **Beta validation**: Walk through `docs/deployment/beta-validation-checklist.md` in a live workspace — install, register channel, classify question, approve draft, post response.
+3. **Run beta preflight**: `.venv/bin/python scripts/beta_preflight.py`, then `.venv/bin/python scripts/beta_preflight.py --live` after deploy.
+4. **Run KMS smoke check**: `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` — must print `KMS smoke ok` before storing customer secrets.
+5. **Beta validation**: Walk through `docs/deployment/private-beta-acceptance.md` in a live workspace — install, register channel, classify question, approve draft, post response.
 
 ## Source Of Truth
 - `RELAY_PRD.md`
@@ -58,8 +59,9 @@ Blocked external steps:
 
 Next recommended action:
 1. Merge the smoke-runner fix.
-2. Run `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` from the beta AWS runtime or an operator shell with the ECS task role permissions.
-3. After KMS smoke passes, deploy web/worker/beat, configure Slack manifest, and run `docs/deployment/private-beta-acceptance.md`.
+2. Run `.venv/bin/python scripts/beta_preflight.py` from the operator shell, then run with `--live` after the deployed API is reachable.
+3. Run `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` from the beta AWS runtime or an operator shell with the ECS task role permissions.
+4. After KMS smoke passes, deploy web/worker/beat, configure Slack manifest, and run `docs/deployment/private-beta-acceptance.md`.
 
 ### Claude — 2026-06-08 (Plan 9 merge + handoff)
 Branch: `claude/plan-9a-foundation` → **PR #19 merged to main**

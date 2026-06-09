@@ -1,5 +1,7 @@
 # Beta Validation Checklist
 
+> Current private-beta operators should use `docs/deployment/private-beta-acceptance.md` first. This older checklist remains as the detailed scenario reference.
+
 Run this end-to-end flow against a fresh workspace after every beta deploy. All 14 steps must complete without any database intervention.
 
 ---

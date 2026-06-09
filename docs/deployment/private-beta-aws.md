@@ -139,7 +139,13 @@ Reference secrets from the task definition:
    scripts/configure-manifest.sh https://your-app-base-url.example.com
    ```
    Paste the generated manifest into https://api.slack.com/apps.
-8. Open `https://your-app-base-url.example.com/` and install the app into the beta Slack workspace.
+8. Run the operator preflight from a shell that has the beta env vars and deploy tooling:
+   ```bash
+   .venv/bin/python scripts/beta_preflight.py
+   .venv/bin/python scripts/beta_preflight.py --live
+   ```
+   The first command checks env/tooling/manifest readiness. The `--live` command also calls `/health` and runs the KMS smoke.
+9. Open `https://your-app-base-url.example.com/` and install the app into the beta Slack workspace.
 
 ## Smoke Checks
 
@@ -147,12 +153,14 @@ Reference secrets from the task definition:
 curl https://relay-beta.example.com/health
 uv run celery -A relay.worker.celery_app.celery inspect ping --timeout=5
 KMS_PROVIDER=aws KMS_KEY_ID=arn:aws:kms:... uv run python scripts/smoke_kms.py
+.venv/bin/python scripts/beta_preflight.py --live
 ```
 
 Done means:
 - `/health` returns `{"status":"ok","db":"ok","redis":"ok"}`.
 - Celery reports at least one worker.
 - KMS smoke prints `KMS smoke ok` using the beta KMS key.
+- Beta preflight reports all required checks as `PASS`.
 - `/relay help` works in the installed Slack workspace.
 - App Home opens without errors.
 - `/relay settings` shows setup state and links.
