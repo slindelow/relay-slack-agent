@@ -40,7 +40,7 @@ The remaining blockers are operational, not code:
 
 - **Deploy the stack** — stand up web, worker, beat, RDS Postgres with pgvector, ElastiCache Redis, and Secrets Manager using the runbook in `docs/deployment/private-beta-aws.md`. Use `scripts/start-local.sh` to validate locally first.
 - **Create the Slack app** — run `scripts/configure-manifest.sh $APP_BASE_URL`, paste the generated manifest into https://api.slack.com/apps, and copy the credentials into your environment.
-- **Run beta preflight** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py`, then rerun with `--live` after deploy.
+- **Run beta preflight** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
 - **Validate KMS in the live environment** — set `KMS_PROVIDER=aws KMS_KEY_ID=arn:...` and run `.venv/bin/python scripts/smoke_kms.py` after deploy.
 - **Run the end-to-end validation checklist** — follow `docs/deployment/private-beta-acceptance.md` in a live workspace before inviting external users.
 

@@ -11,13 +11,14 @@ Repo live at `https://github.com/slindelow/relay-slack-agent`.
 Merged to `main` (all plans):
 - PRs #1–18: Plans 1–8 (foundation → security hardening)
 - PR #19 (`claude/plan-9a-foundation`): Plan 9 — multi-workspace OAuth, connector UI, KMS, deployment artifacts, beta docs — **merged 2026-06-08**
+- PR #20 (`codex/plan-9-kms-smoke-runner`): KMS smoke runner and beta preflight tooling — **merged 2026-06-09**
 
 Open PRs: none.
 
 ## Launch Blockers (Operational — require external credentials)
 1. **Deploy to AWS**: ECS/Fargate web + worker + beat, RDS pgvector, ElastiCache Redis, KMS key, Secrets Manager — see `docs/deployment/private-beta-aws.md`.
 2. **Configure Slack app**: Run `scripts/configure-manifest.sh <APP_BASE_URL>`, paste manifest into https://api.slack.com/apps, update `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `SLACK_SIGNING_SECRET`.
-3. **Run beta preflight**: `.venv/bin/python scripts/beta_preflight.py`, then `.venv/bin/python scripts/beta_preflight.py --live` after deploy.
+3. **Run beta preflight**: `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
 4. **Run KMS smoke check**: `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` — must print `KMS smoke ok` before storing customer secrets.
 5. **Beta validation**: Walk through `docs/deployment/private-beta-acceptance.md` in a live workspace — install, register channel, classify question, approve draft, post response.
 
@@ -40,6 +41,24 @@ Open PRs: none.
 
 ## Agent Updates
 
+### Codex — 2026-06-09 (Beta env preflight follow-up)
+Branch: `codex/plan-9-beta-env-preflight`
+Status: Added `.env.beta` loading for operator preflight and removed a test dependency on ambient AWS config.
+
+Work completed:
+- Added `--env-file` support to `scripts/beta_preflight.py`; exported shell values still take precedence over file values.
+- Updated README and beta runbooks to recommend `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`.
+- Removed a redundant inner `get_settings` import from the Google Drive connector so tests and callers patch the module dependency consistently.
+- Pinned Google Drive connector tests to local/non-KMS mode, preventing accidental real AWS KMS client construction when ambient AWS env exists.
+
+Validation:
+- `.venv/bin/python -m pytest -q` — 297 passed, 28 skipped, 1 warning.
+- `.venv/bin/python -m compileall -q relay tests scripts` — passed.
+- `git diff --check` — passed.
+
+Current external blocker:
+- `aws` CLI is installed, but `aws sts get-caller-identity` fails with `NoCredentials`; no AWS profile/region, beta env vars, Docker runtime, Slack app credentials, or deployed `APP_BASE_URL` are available in this shell.
+
 ### Codex — 2026-06-09 (Operational launch step-through)
 Branch: `codex/plan-9-kms-smoke-runner`
 Status: Local stabilization complete; AWS/Slack beta execution remains blocked on external credentials and tooling.
@@ -59,7 +78,7 @@ Blocked external steps:
 
 Next recommended action:
 1. Merge the smoke-runner fix.
-2. Run `.venv/bin/python scripts/beta_preflight.py` from the operator shell, then run with `--live` after the deployed API is reachable.
+2. Run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta` from the operator shell, then run with `--live` after the deployed API is reachable.
 3. Run `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` from the beta AWS runtime or an operator shell with the ECS task role permissions.
 4. After KMS smoke passes, deploy web/worker/beat, configure Slack manifest, and run `docs/deployment/private-beta-acceptance.md`.
 
