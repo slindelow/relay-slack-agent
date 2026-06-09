@@ -26,11 +26,14 @@ def test_run_smoke_round_trips_with_mocked_kms():
     assert result.key_id == "kms-key"
 
 
-def test_run_smoke_requires_kms_provider():
+def test_run_smoke_local_mode_succeeds():
     settings = SimpleNamespace(kms_provider="none", kms_key_id="")
     with patch("scripts.smoke_kms.kms_provider_from_settings", return_value=None):
-        with pytest.raises(RuntimeError, match="KMS_PROVIDER=aws"):
-            run_smoke(settings)
+        result = run_smoke(settings)
+
+    assert result.ok is True
+    assert result.provider == "none"
+    assert result.key_id == "local"
 
 
 def test_main_uses_kms_env_without_full_app_settings(monkeypatch, capsys):

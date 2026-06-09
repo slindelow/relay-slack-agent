@@ -34,7 +34,13 @@ def run_smoke(settings=None) -> SmokeResult:
     )
     provider = kms_provider_from_settings(settings)
     if provider is None:
-        raise RuntimeError("KMS_PROVIDER=aws and KMS_KEY_ID are required for KMS smoke testing")
+        # Local/none mode: verify AES-GCM encryption with a raw DEK (no KMS wrapping)
+        dek = generate_dek()
+        ciphertext, nonce = encrypt_token("relay-kms-smoke-token", dek)
+        plaintext = decrypt_token(ciphertext, nonce, dek)
+        if plaintext != "relay-kms-smoke-token":
+            raise RuntimeError("AES-GCM roundtrip failed in local mode")
+        return SmokeResult(provider=settings.kms_provider or "none", key_id="local", ok=True)
 
     dek = generate_dek()
     wrapped = wrap_dek(dek, provider)

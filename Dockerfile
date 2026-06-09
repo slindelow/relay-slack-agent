@@ -13,6 +13,8 @@ RUN uv sync --locked --no-dev
 
 COPY . .
 
+RUN chmod +x scripts/start_web.sh
+
 EXPOSE 3000
 
-CMD ["uv", "run", "uvicorn", "relay.api.main:api", "--host", "0.0.0.0", "--port", "3000"]
+CMD ["bash", "scripts/start_web.sh"]

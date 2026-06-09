@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -110,22 +111,18 @@ def test_load_env_file_sets_missing_values(tmp_path, monkeypatch):
             "",
         ])
     )
-    monkeypatch.delenv("APP_BASE_URL", raising=False)
-    monkeypatch.delenv("KMS_PROVIDER", raising=False)
-    monkeypatch.delenv("KMS_KEY_ID", raising=False)
+    with patch.dict(os.environ, {}, clear=True):
+        beta_preflight.load_env_file(env_file)
 
-    beta_preflight.load_env_file(env_file)
-
-    assert beta_preflight._env("APP_BASE_URL") == "https://relay-beta.example.com"
-    assert beta_preflight._env("KMS_PROVIDER") == "aws"
-    assert beta_preflight._env("KMS_KEY_ID") == "arn:aws:kms:test"
+        assert beta_preflight._env("APP_BASE_URL") == "https://relay-beta.example.com"
+        assert beta_preflight._env("KMS_PROVIDER") == "aws"
+        assert beta_preflight._env("KMS_KEY_ID") == "arn:aws:kms:test"
 
 
 def test_load_env_file_does_not_override_exported_values(tmp_path, monkeypatch):
     env_file = tmp_path / ".env.beta"
     env_file.write_text("APP_BASE_URL=https://from-file.example.com\n")
-    monkeypatch.setenv("APP_BASE_URL", "https://from-shell.example.com")
+    with patch.dict(os.environ, {"APP_BASE_URL": "https://from-shell.example.com"}, clear=True):
+        beta_preflight.load_env_file(env_file)
 
-    beta_preflight.load_env_file(env_file)
-
-    assert beta_preflight._env("APP_BASE_URL") == "https://from-shell.example.com"
+        assert beta_preflight._env("APP_BASE_URL") == "https://from-shell.example.com"
