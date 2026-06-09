@@ -4,7 +4,7 @@
 
 RELAY's backend product loop is largely implemented and tested, but it is not yet an installable product for external customer-success teams. Plan 9 turns RELAY into a private-beta Slack app that a friendly workspace can install, configure, and use in real Slack Connect channels before Slack Marketplace submission.
 
-Private beta comes before Marketplace submission. The default production path is AWS-oriented because it best supports live-product security, AWS KMS, managed Postgres/Redis, secrets, monitoring, and eventual Marketplace review.
+Private beta comes before Marketplace submission. The current private-beta hosting path is Railway for speed of setup and validation. AWS remains the hardened production/Marketplace path because it best supports AWS KMS, managed infrastructure controls, and eventual security review.
 
 ## Ownership Model
 
@@ -31,7 +31,8 @@ Done means:
 Tasks:
 - Document production topology for FastAPI web, Celery worker, Celery beat/SLA poller, Postgres with pgvector, Redis, migrations, health checks, Sentry, and secrets.
 - Add minimal container/deploy artifacts without changing app behavior.
-- Prefer AWS target architecture: ECS/Fargate, RDS Postgres with pgvector, ElastiCache Redis, Secrets Manager, CloudWatch, Sentry, and AWS KMS.
+- Prefer Railway for the immediate friendly beta: web, worker, beat, Postgres with pgvector, Redis, Railway variables, Sentry, and local-mode encryption using `TOKEN_ENCRYPTION_KEY`.
+- Keep AWS target architecture documented for production hardening: ECS/Fargate, RDS Postgres with pgvector, ElastiCache Redis, Secrets Manager, CloudWatch, Sentry, and AWS KMS.
 
 Done means:
 - A new deploy can run `alembic upgrade head`, start web, worker, and beat processes.
@@ -82,15 +83,16 @@ Done means:
 ### 6. Production Security + KMS
 
 Tasks:
-- Replace the current `KMS_PROVIDER=aws` guard with working AWS KMS encryption/decryption. AWS KMS provider selection is enabled; live beta still needs AWS IAM/config smoke validation.
-- Store workspace DEKs using AWS KMS; keep legacy fallback only for migration.
-- Document IAM permissions and run the re-encryption script in dry-run mode before live use. `scripts/smoke_kms.py` is available for throwaway DEK validation.
+- Keep Railway beta on `KMS_PROVIDER=none` with a strong `TOKEN_ENCRYPTION_KEY`; validate with `scripts/smoke_kms.py`.
+- Keep AWS KMS implementation and IAM documentation ready for the later hardened production path.
+- Store workspace DEKs using AWS KMS before Marketplace/broader external rollout; keep legacy fallback only for migration.
 - Review public/admin endpoints for auth, Slack verification, role checks, and redacted logs.
 
 Done means:
 - New workspace, CRM, and connector tokens use workspace DEK encryption.
-- AWS KMS mock/unit tests and one integration-style test pass.
-- Legacy fallback path is documented and not used for new beta installs.
+- Railway beta encryption smoke passes with `KMS_PROVIDER=none`.
+- AWS KMS mock/unit tests and one integration-style test pass before production hardening.
+- Legacy fallback path is documented and is acceptable only for friendly Railway beta.
 - Security tests pass and no secret/token appears in logs.
 
 ### 7. End-to-End Beta Validation
@@ -99,7 +101,7 @@ Tasks:
 - Run a real Slack Connect flow: install, register external channel, classify a customer question, alert owner, claim, generate draft, approve, post, index memory.
 - Validate connector purge, workspace deletion, uninstall cleanup, and individual user erasure.
 - Validate classifier on a small labeled beta dataset.
-- Use `docs/deployment/private-beta-acceptance.md` as the manual beta run script until Slack/AWS credentials are available in CI.
+- Use `docs/deployment/private-beta-acceptance.md` as the manual beta run script until Slack/Railway credentials are available in CI.
 
 Done means:
 - Full live flow succeeds in one test workspace without manual DB intervention.
@@ -136,10 +138,10 @@ Done means:
 ## Required Test Baseline
 
 - `.venv/bin/python -m pytest -q` stays green.
-- Add focused tests as workstreams land: `/relay settings`, first-admin bootstrap, Slack manifest consistency, HubSpot upsert, AWS KMS provider, connector setup, deployment smoke checks, and live beta acceptance script.
+- Add focused tests as workstreams land: `/relay settings`, first-admin bootstrap, Slack manifest consistency, HubSpot upsert, KMS provider/local smoke, connector setup, deployment smoke checks, and live beta acceptance script.
 
 ## Explicit Assumptions
 
 - Private beta comes before Slack Marketplace submission.
-- AWS-oriented infrastructure is the default live-product path.
+- Railway is the immediate private-beta hosting path; AWS remains the hardened production path.
 - Slack handlers ack first; LLM and external calls stay in workers; Postgres RLS remains the tenant boundary; generated customer replies require human approval.

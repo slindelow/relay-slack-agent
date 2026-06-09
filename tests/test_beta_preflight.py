@@ -18,8 +18,8 @@ def _set_required_env(monkeypatch):
         "SLACK_SIGNING_SECRET": "signing",
         "TOKEN_ENCRYPTION_KEY": "a" * 64,
         "ANTHROPIC_API_KEY": "anthropic",
-        "KMS_PROVIDER": "aws",
-        "KMS_KEY_ID": "arn:aws:kms:region:account:key/id",
+        "KMS_PROVIDER": "none",
+        "BETA_DEPLOY_TARGET": "railway",
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
@@ -33,13 +33,23 @@ def test_required_env_reports_missing(monkeypatch):
     assert any(result.message == "APP_BASE_URL is missing" and not result.ok for result in results)
 
 
-def test_required_env_enforces_aws_kms(monkeypatch):
+def test_required_env_accepts_railway_local_kms(monkeypatch):
     _set_required_env(monkeypatch)
-    monkeypatch.setenv("KMS_PROVIDER", "none")
 
     results = beta_preflight._check_required_env()
 
-    assert any(result.message == "KMS_PROVIDER must be aws for beta launch" for result in results)
+    assert all(result.ok for result in results)
+    assert any("KMS_KEY_ID is not required" in result.message for result in results)
+
+
+def test_required_env_requires_kms_key_for_aws(monkeypatch):
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("BETA_DEPLOY_TARGET", "aws")
+    monkeypatch.setenv("KMS_PROVIDER", "aws")
+
+    results = beta_preflight._check_required_env()
+
+    assert any(result.message == "KMS_KEY_ID is required when KMS_PROVIDER=aws" for result in results)
 
 
 def test_manifest_generated_must_match_app_base_url(tmp_path, monkeypatch):
@@ -106,8 +116,8 @@ def test_load_env_file_sets_missing_values(tmp_path, monkeypatch):
         "\n".join([
             "# beta settings",
             "APP_BASE_URL=https://relay-beta.example.com",
-            "KMS_PROVIDER='aws'",
-            'KMS_KEY_ID="arn:aws:kms:test"',
+            "KMS_PROVIDER='none'",
+            "BETA_DEPLOY_TARGET='railway'",
             "",
         ])
     )
@@ -115,8 +125,8 @@ def test_load_env_file_sets_missing_values(tmp_path, monkeypatch):
         beta_preflight.load_env_file(env_file)
 
         assert beta_preflight._env("APP_BASE_URL") == "https://relay-beta.example.com"
-        assert beta_preflight._env("KMS_PROVIDER") == "aws"
-        assert beta_preflight._env("KMS_KEY_ID") == "arn:aws:kms:test"
+        assert beta_preflight._env("KMS_PROVIDER") == "none"
+        assert beta_preflight._env("BETA_DEPLOY_TARGET") == "railway"
 
 
 def test_load_env_file_does_not_override_exported_values(tmp_path, monkeypatch):

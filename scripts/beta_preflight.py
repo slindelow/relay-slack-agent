@@ -24,7 +24,6 @@ REQUIRED_ENV = [
     "TOKEN_ENCRYPTION_KEY",
     "ANTHROPIC_API_KEY",
     "KMS_PROVIDER",
-    "KMS_KEY_ID",
 ]
 
 OPTIONAL_ENV = [
@@ -38,7 +37,10 @@ OPTIONAL_ENV = [
 ]
 
 REQUIRED_COMMANDS = ["curl", "git"]
-DEPLOY_COMMANDS = ["aws", "docker"]
+DEPLOY_COMMANDS_BY_TARGET = {
+    "railway": ["railway"],
+    "aws": ["aws", "docker"],
+}
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,10 @@ class CheckResult:
 
 def _env(name: str) -> str:
     return os.environ.get(name, "").strip()
+
+
+def _deploy_target() -> str:
+    return _env("BETA_DEPLOY_TARGET").lower() or "railway"
 
 
 def load_env_file(path: Path) -> None:
@@ -68,6 +74,10 @@ def load_env_file(path: Path) -> None:
 
 def _check_required_env() -> list[CheckResult]:
     results: list[CheckResult] = []
+    deploy_target = _deploy_target()
+    if deploy_target not in DEPLOY_COMMANDS_BY_TARGET:
+        results.append(CheckResult(False, "BETA_DEPLOY_TARGET must be railway or aws"))
+
     for name in REQUIRED_ENV:
         value = _env(name)
         if not value:
@@ -76,10 +86,19 @@ def _check_required_env() -> list[CheckResult]:
         if name == "TOKEN_ENCRYPTION_KEY" and len(value) != 64:
             results.append(CheckResult(False, "TOKEN_ENCRYPTION_KEY must be 64 hex characters"))
             continue
-        if name == "KMS_PROVIDER" and value != "aws":
-            results.append(CheckResult(False, "KMS_PROVIDER must be aws for beta launch"))
+        if name == "KMS_PROVIDER" and value not in {"none", "local", "aws"}:
+            results.append(CheckResult(False, "KMS_PROVIDER must be none, local, or aws"))
             continue
         results.append(CheckResult(True, f"{name} is set"))
+    if _env("KMS_PROVIDER") == "aws":
+        if _env("KMS_KEY_ID"):
+            results.append(CheckResult(True, "KMS_KEY_ID is set"))
+        else:
+            results.append(CheckResult(False, "KMS_KEY_ID is required when KMS_PROVIDER=aws"))
+    elif _env("KMS_KEY_ID"):
+        results.append(CheckResult(True, "KMS_KEY_ID is set but not required for this beta target"))
+    else:
+        results.append(CheckResult(True, "KMS_KEY_ID is not required for Railway/local KMS mode", "WARN"))
     return results
 
 
@@ -135,10 +154,11 @@ def _check_kms_smoke() -> CheckResult:
 
 
 def run_checks(*, live: bool, timeout: int) -> tuple[list[CheckResult], list[CheckResult]]:
+    deploy_target = _deploy_target()
     required = [
         *_check_required_env(),
         *_check_commands(REQUIRED_COMMANDS, required=True),
-        *_check_commands(DEPLOY_COMMANDS, required=False),
+        *_check_commands(DEPLOY_COMMANDS_BY_TARGET.get(deploy_target, []), required=False),
     ]
     optional = _check_optional_env()
 

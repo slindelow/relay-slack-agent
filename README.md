@@ -20,7 +20,7 @@ Once installed, four setup steps unlock the full feature set:
 After all four steps, the App Home shows ":tada: Setup complete" and RELAY begins monitoring for unanswered customer questions automatically.
 
 For a full walkthrough, see [docs/beta-user-guide.md](docs/beta-user-guide.md).
-For deployment instructions, see [docs/deployment/private-beta-aws.md](docs/deployment/private-beta-aws.md).
+For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/deployment/private-beta-railway.md).
 
 ---
 
@@ -38,16 +38,17 @@ For deployment instructions, see [docs/deployment/private-beta-aws.md](docs/depl
 
 The remaining blockers are operational, not code:
 
-- **Deploy the stack** — stand up web, worker, beat, RDS Postgres with pgvector, ElastiCache Redis, and Secrets Manager using the runbook in `docs/deployment/private-beta-aws.md`. Use `scripts/start-local.sh` to validate locally first.
+- **Deploy the stack** — stand up Railway web, worker, beat, Postgres with pgvector, Redis, and variables using the runbook in `docs/deployment/private-beta-railway.md`. Use `scripts/start-local.sh` to validate locally first.
 - **Create the Slack app** — run `scripts/configure-manifest.sh $APP_BASE_URL`, paste the generated manifest into https://api.slack.com/apps, and copy the credentials into your environment.
 - **Run beta preflight** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
-- **Validate KMS in the live environment** — set `KMS_PROVIDER=aws KMS_KEY_ID=arn:...` and run `.venv/bin/python scripts/smoke_kms.py` after deploy.
+- **Validate beta encryption** — set `KMS_PROVIDER=none` for Railway beta and run `.venv/bin/python scripts/smoke_kms.py` after deploy. AWS KMS remains the later hardened production path.
 - **Run the end-to-end validation checklist** — follow `docs/deployment/private-beta-acceptance.md` in a live workspace before inviting external users.
 
 ## Private Beta Launch Docs
 
 - Active shared plan: `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
-- AWS deployment runbook: `docs/deployment/private-beta-aws.md`
+- Railway deployment runbook: `docs/deployment/private-beta-railway.md`
+- AWS hardening runbook: `docs/deployment/private-beta-aws.md`
 - End-to-end validation checklist: `docs/deployment/private-beta-acceptance.md`
 - Non-technical user guide for CS admins: `docs/beta-user-guide.md`
 - Slack app manifest: `slack-app-manifest.yaml`
@@ -78,7 +79,7 @@ The remaining blockers are operational, not code:
 | Queue | Celery 5 + Redis 7 |
 | LLM | Anthropic SDK |
 | Embeddings | Voyage or OpenAI |
-| Token encryption | AES-256-GCM with Plan 9 AWS KMS production path |
+| Token encryption | AES-256-GCM; Railway beta uses `TOKEN_ENCRYPTION_KEY`, AWS KMS remains the hardened production path |
 | Settings | Pydantic Settings v2 |
 | Tests | pytest + pytest-asyncio |
 

@@ -1,6 +1,6 @@
 # Private Beta Acceptance Checklist
 
-Use this checklist for the first friendly Slack Connect beta workspace. Keep the run manual until real Slack/AWS credentials are available in CI.
+Use this checklist for the first friendly Slack Connect beta workspace. Keep the run manual until real Slack/Railway credentials are available in CI.
 
 ## Environment
 
@@ -16,7 +16,7 @@ Use this checklist for the first friendly Slack Connect beta workspace. Keep the
 - [ ] `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta` reports all required checks as `PASS`.
 - [ ] `curl $APP_BASE_URL/health` returns `status=ok`, `db=ok`, and `redis=ok`.
 - [ ] `uv run celery -A relay.worker.celery_app.celery inspect ping --timeout=5` returns at least one worker.
-- [ ] `KMS_PROVIDER=aws KMS_KEY_ID=... .venv/bin/python scripts/smoke_kms.py` prints `KMS smoke ok`.
+- [ ] `KMS_PROVIDER=none .venv/bin/python scripts/smoke_kms.py` prints `KMS smoke ok: provider=none key_id=local`.
 - [ ] `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta --live` reports all required checks as `PASS`.
 - [ ] Slack app manifest URLs match `APP_BASE_URL`.
 

@@ -1,5 +1,7 @@
 # Private Beta AWS Deployment Runbook
 
+> Current friendly private beta is moving to Railway. Use `docs/deployment/private-beta-railway.md` for the immediate beta setup. This AWS runbook is retained for later hardened production/Marketplace readiness.
+
 This runbook describes the target private-beta deployment for RELAY. It is intentionally AWS-oriented so the beta environment can evolve into the live product without reworking KMS, secrets, and observability.
 
 ## Target Topology
