@@ -13,8 +13,8 @@ RUN uv sync --locked --no-dev
 
 COPY . .
 
-RUN chmod +x scripts/start_web.sh
+RUN chmod +x scripts/entrypoint.sh scripts/start_web.sh scripts/start_worker.sh
 
 EXPOSE 3000
 
-CMD ["bash", "scripts/start_web.sh"]
+CMD ["bash", "scripts/entrypoint.sh"]

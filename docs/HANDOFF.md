@@ -17,10 +17,10 @@ Merged to `main` (all plans):
 Open PRs: none.
 
 ## Launch Blockers (Operational — require external credentials)
-1. **Deploy to AWS**: ECS/Fargate web + worker + beat, RDS pgvector, ElastiCache Redis, KMS key, Secrets Manager — see `docs/deployment/private-beta-aws.md`.
+1. **Deploy to Railway**: web + worker + beat, Railway Postgres with pgvector, Railway Redis, Railway variables — see `docs/deployment/private-beta-railway.md`.
 2. **Configure Slack app**: Run `scripts/configure-manifest.sh <APP_BASE_URL>`, paste manifest into https://api.slack.com/apps, update `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `SLACK_SIGNING_SECRET`.
 3. **Run beta preflight**: `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
-4. **Run KMS smoke check**: `KMS_PROVIDER=aws KMS_KEY_ID=<arn> .venv/bin/python scripts/smoke_kms.py` — must print `KMS smoke ok` before storing customer secrets.
+4. **Run encryption smoke check**: Railway beta should use `KMS_PROVIDER=none` and `.venv/bin/python scripts/smoke_kms.py` should print `KMS smoke ok: provider=none key_id=local`. AWS KMS remains the later hardened production path.
 5. **Beta validation**: Walk through `docs/deployment/private-beta-acceptance.md` in a live workspace — install, register channel, classify question, approve draft, post response.
 
 ## Source Of Truth
@@ -42,6 +42,23 @@ Open PRs: none.
 
 ## Agent Updates
 
+### Codex — 2026-06-09 (Railway beta pivot)
+Branch: `codex/plan-9-railway-beta-alignment`
+Status: Railway is now the immediate private-beta deployment path; AWS is no longer the active beta blocker.
+
+Work in progress:
+- Update shared coordination docs from AWS-first beta language to Railway-first beta language.
+- Update `scripts/beta_preflight.py` so `BETA_DEPLOY_TARGET=railway` with `KMS_PROVIDER=none` can pass, while `BETA_DEPLOY_TARGET=aws` still requires `KMS_KEY_ID` when using AWS KMS.
+- Add `docs/deployment/private-beta-railway.md` as the operator runbook for the current setup work with Claude.
+- Confirmed Railway CLI is logged in as `sofiaklindelow@gmail.com` and linked to project `truthful-caring`.
+- Current Railway web URL is `https://web-production-acd3.up.railway.app`; `railway status` shows web and worker offline while Redis/Postgres resources are online.
+- `curl https://web-production-acd3.up.railway.app/health` currently returns Railway fallback `404 Application not found`, so live beta preflight should wait until the web service is deployed/running.
+
+Next external inputs needed:
+1. Finish Railway service deployment for web, worker, and beat without conflicting with Claude's active setup work.
+2. `.env.beta` or exported beta env vars with `BETA_DEPLOY_TARGET=railway`, `KMS_PROVIDER=none`, `APP_BASE_URL`, Slack credentials, DB/Redis URLs, `TOKEN_ENCRYPTION_KEY`, and `ANTHROPIC_API_KEY`.
+3. Slack app credentials and a friendly Slack Connect beta workspace.
+
 ### Codex — 2026-06-09 (Operational status after PR #21)
 Branch: `main` → `codex/plan-9-operational-handoff-update`
 Status: PR #21 merged; remaining work is blocked on external deployment credentials and beta workspace setup.
@@ -54,8 +71,8 @@ Work completed:
 - Confirmed AWS is not usable from this shell yet: `aws sts get-caller-identity` fails with `NoCredentials`, and `aws configure list` shows no profile, access key, secret key, or region.
 
 Next external inputs needed:
-1. A local ignored `.env.beta` or exported beta env vars with `APP_BASE_URL`, Slack OAuth credentials, database/Redis URLs, `TOKEN_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, `KMS_PROVIDER=aws`, and `KMS_KEY_ID`.
-2. AWS login/profile/region or Railway token/project access, depending on the chosen beta host.
+1. A local ignored `.env.beta` or exported beta env vars with `BETA_DEPLOY_TARGET=railway`, `APP_BASE_URL`, Slack OAuth credentials, database/Redis URLs, `TOKEN_ENCRYPTION_KEY`, `ANTHROPIC_API_KEY`, and `KMS_PROVIDER=none`.
+2. Railway project access and deployed service URLs.
 3. Slack app credentials and a friendly Slack Connect beta workspace.
 
 ### Codex — 2026-06-09 (Beta env preflight follow-up)

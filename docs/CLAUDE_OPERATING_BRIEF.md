@@ -67,11 +67,11 @@ Do not reverse these decisions:
 
 ## Plan 9 Focus
 Plan 9 turns RELAY from a tested backend into an installable private-beta Slack product:
-- AWS-oriented production deployment path.
+- Railway-oriented private-beta deployment path; AWS remains later production hardening.
 - Slack manifest and private-beta install path.
 - Admin onboarding through App Home and `/relay settings`.
 - Connector/CRM readiness for non-engineer setup.
-- Production KMS and security validation.
+- Railway beta encryption smoke; AWS KMS/security validation before broader rollout.
 - Live Slack Connect beta validation.
 - External user docs, support path, and Marketplace preparation after beta evidence.
 
