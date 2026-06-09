@@ -13,7 +13,10 @@ case "${SERVICE_TYPE:-web}" in
     exec uv run uvicorn relay.api.main:api --host 0.0.0.0 --port "${PORT:-3000}"
     ;;
   worker)
-    exec uv run celery -A relay.worker.celery_app worker -Q default --beat --loglevel=info
+    exec bash scripts/start_worker.sh worker
+    ;;
+  beat)
+    exec bash scripts/start_worker.sh beat
     ;;
   *)
     echo "Unknown SERVICE_TYPE: ${SERVICE_TYPE}" >&2
