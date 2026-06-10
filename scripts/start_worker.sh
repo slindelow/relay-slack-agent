@@ -8,7 +8,7 @@ export DATABASE_URL="${DATABASE_URL/postgres:\/\//postgresql+asyncpg:\/\/}"
 
 case "${1:-worker}" in
   worker)
-    exec uv run celery -A relay.worker.celery_app.celery worker --loglevel=INFO
+    exec uv run celery -A relay.worker.celery_app.celery worker --concurrency=2 --beat --loglevel=INFO
     ;;
   beat)
     exec uv run celery -A relay.worker.celery_app.celery beat --loglevel=INFO
