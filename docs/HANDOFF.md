@@ -6,22 +6,64 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 ## Current Status
 Repo live at `https://github.com/slindelow/relay-slack-agent`.
 
-**Plans 1–9 merged to main. Code is complete. Remaining work is operational only.**
+**Plans 1–9 merged to main. Code is complete. Railway deployment is LIVE.**
 
 Merged to `main` (all plans):
 - PRs #1–18: Plans 1–8 (foundation → security hardening)
 - PR #19 (`claude/plan-9a-foundation`): Plan 9 — multi-workspace OAuth, connector UI, KMS, deployment artifacts, beta docs — **merged 2026-06-08**
 - PR #20 (`codex/plan-9-kms-smoke-runner`): KMS smoke runner and beta preflight tooling — **merged 2026-06-09**
-- PR #21 (`codex/plan-9-beta-env-preflight`): `.env.beta` preflight loading, Railway deploy config, local KMS smoke mode — **merged 2026-06-09**
+- PR #21 (`codex/plan-9-beta-env-preflight`): Railway deploy config, local KMS smoke mode — **merged 2026-06-09**
 
 Open PRs: none.
 
-## Launch Blockers (Operational — require external credentials)
-1. **Deploy to Railway**: web + worker + beat, Railway Postgres with pgvector, Railway Redis, Railway variables — see `docs/deployment/private-beta-railway.md`.
-2. **Configure Slack app**: Run `scripts/configure-manifest.sh <APP_BASE_URL>`, paste manifest into https://api.slack.com/apps, update `SLACK_CLIENT_ID` / `SLACK_CLIENT_SECRET` / `SLACK_SIGNING_SECRET`.
-3. **Run beta preflight**: `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
-4. **Run encryption smoke check**: Railway beta should use `KMS_PROVIDER=none` and `.venv/bin/python scripts/smoke_kms.py` should print `KMS smoke ok: provider=none key_id=local`. AWS KMS remains the later hardened production path.
-5. **Beta validation**: Walk through `docs/deployment/private-beta-acceptance.md` in a live workspace — install, register channel, classify question, approve draft, post response.
+## Railway Deployment (LIVE as of 2026-06-10)
+
+**Project:** `truthful-caring` on Railway (slindelow's Projects)
+**Web URL:** `https://web-production-acd3.up.railway.app`
+**Health:** `{"status":"ok","service":"relay","db":"ok","redis":"ok"}` ✅
+
+Services running:
+- `web` — uvicorn, migrations run on boot via `scripts/entrypoint.sh`
+- `worker` — Celery worker + beat via `scripts/entrypoint.sh` (SERVICE_TYPE=worker)
+- `Postgres` — Railway managed Postgres (pgvector enabled)
+- `Redis` — Railway managed Redis
+
+All env vars set on Railway (stored in Railway secrets, not in code):
+- `DATABASE_URL`, `REDIS_URL` — Railway internal URLs (converted postgresql+asyncpg by entrypoint)
+- `TOKEN_ENCRYPTION_KEY`, `ERASURE_SECRET` — generated, stored in Railway
+- `KMS_PROVIDER=none`, `ENVIRONMENT=beta`, `APP_BASE_URL`, `EMBEDDING_PROVIDER=voyage`
+- `ANTHROPIC_API_KEY` — set
+- `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` — set
+
+**NOT YET SET** (optional until connectors needed):
+- `VOYAGE_API_KEY` — needed for knowledge search / draft evidence
+- `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` — needed for CRM sync
+
+## Remaining Steps to Beta Validation
+
+1. **Add OAuth redirect URL to Slack app** ← NEXT ACTION
+   - Go to api.slack.com/apps → RELAY app → OAuth & Permissions → Redirect URLs
+   - Add: `https://web-production-acd3.up.railway.app/slack/oauth_redirect`
+   - Save URLs
+
+2. **Install app into test workspace**
+   - Open `https://web-production-acd3.up.railway.app/` → click Add to Slack
+   - Authorize in the "RELAY Beta" test workspace
+
+3. **Walk beta validation checklist**
+   - File: `docs/deployment/beta-validation-checklist.md`
+   - 14 steps: install → register channel → connect HubSpot → connect GitHub → classify question → claim → draft → send → pulse → delete
+
+4. **Add Voyage API key** (before step 9 — draft generation needs embeddings)
+   - `railway variable set "VOYAGE_API_KEY=<key>" --service web`
+   - `railway variable set "VOYAGE_API_KEY=<key>" --service worker`
+   - Get key at dash.voyageai.com
+
+## Slack App Config
+- **App name:** RELAY
+- **Test workspace:** "RELAY Beta" (new workspace created for testing)
+- **Manifest deployed:** yes (YAML pasted into api.slack.com/apps)
+- **Slack app credentials:** stored in Railway only
 
 ## Source Of Truth
 - `RELAY_PRD.md`
