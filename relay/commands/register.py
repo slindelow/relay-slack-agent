@@ -142,7 +142,10 @@ async def _fetch_channel_metadata(client, channel_id: str, installer_team_id: st
     channel = response.get("channel", {})
     shared_team_ids = channel.get("shared_team_ids") or []
     customer_team_id = next((team_id for team_id in shared_team_ids if team_id != installer_team_id), None)
-    return customer_team_id, bool(channel.get("is_ext_shared"))
+    # Accept channels that are externally shared in any form (is_ext_shared covers
+    # Slack Connect; is_shared covers guest-based external sharing on free plans)
+    is_external = bool(channel.get("is_ext_shared") or channel.get("is_shared") or customer_team_id)
+    return customer_team_id, is_external
 
 
 async def handle_register(ack, respond, command, client=None) -> None:
