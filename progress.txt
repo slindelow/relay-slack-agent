@@ -1,23 +1,11 @@
-## Codebase Patterns
+## Status — 2026-06-18
 
-- RLS session pattern: always use `get_session(workspace_id)` for tenant queries; `get_session()` (no arg) is cross-tenant scan only (returns no tenant rows due to RLS)
-- Encryption: `relay.crypto.encrypt_token(plaintext_bytes, key_bytes) -> (ciphertext, nonce)`; `decrypt_token(ciphertext, nonce, key_bytes) -> plaintext_bytes`; key bytes from `settings.token_encryption_key_bytes`
-- Composite FK pattern: workspace-scoped FKs use two-column ForeignKeyConstraint (workspace_id + id) to enforce same-workspace ownership; add `overlaps=` to silence SAWarnings on relationships
-- State machine: always `SELECT ... WITH FOR UPDATE` before a state transition (see relay/question/machine.py) to prevent double-claim race
-- Celery task args must be JSON-serializable (strings, not UUIDs or datetimes); convert inside task body
-- Bolt handler pattern: `await ack()` first, then do async DB work; never call LLM or external API before acking
-- ORM models: all PKs are UUID(as_uuid=True) with default=uuid.uuid4; all tenant tables include workspace_id FK to workspaces.id with ondelete=CASCADE
-- Settings via Pydantic Settings v2: `get_settings()` returns a cached Settings instance; add new env vars as fields with defaults
-- Tests: unit tests use no live DB/Redis/Anthropic; integration tests (test_oauth.py, test_rls.py) are skipped when TEST_DATABASE_URL is not set
-- `Question.snoozed_until` field on the Question model is dead schema — the Snooze table is authoritative; do not set or read it
-- SLA poller two-phase pattern: Phase 1 cross-tenant SELECT (id, workspace_id) only; Phase 2 per-workspace session for all reads+writes atomically (see relay/sla/poller.py)
+All plans (1–9) complete and merged to main. Railway deployment live.
 
----
+No active ralph plan. Next work is operational beta validation:
+1. Add OAuth redirect URL to Slack app (api.slack.com/apps → RELAY → OAuth & Permissions)
+2. Install app into "RELAY Beta" workspace
+3. Add VOYAGE_API_KEY to Railway
+4. Walk docs/deployment/beta-validation-checklist.md (14 steps)
 
-## Plan 4 Start — 2026-06-05
-
-Starting Plan 4: Source Connectors + Embedding Pipeline.
-Branch: ralph/plan-4-source-connectors
-PRDs: tasks/prd-plan4-source-connectors.md
-prd.json: 9 user stories, US-001 through US-009.
-Dependencies: Plans 1-3 complete (merged or in PR).
+See docs/HANDOFF.md for full operational state.

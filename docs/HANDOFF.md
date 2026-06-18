@@ -84,6 +84,19 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 
 ## Agent Updates
 
+### Claude — 2026-06-10 (Channel registration + worker fixes)
+Branch: `main` (committed directly to main — operational fixes)
+Status: Two bugs surfaced during beta validation attempt, both fixed and merged.
+
+Work completed:
+- `fix(worker)`: corrected Procfile module path, capped Celery concurrency, enabled beat scheduler (`ae9e6dd`, `dd94744`)
+- `fix(register)`: channel registration was rejecting Slack Connect channels on free-plan workspaces because `is_ext_shared` is not set for guest-shared channels. Fixed `_fetch_channel_metadata()` in `relay/commands/register.py` to accept any channel where `is_shared=True` or an external team appears in `shared_team_ids` — covers all external sharing variants (`eae4772`)
+- `debug(register)`: added `logger.info` in `_fetch_channel_metadata()` to log channel metadata (is_ext_shared, is_shared, shared_team_ids, customer_team_id) to Railway logs for ongoing beta diagnostics (`68001f1`)
+
+**Note:** The debug logging commit is intentionally left in — it emits at INFO level and helps diagnose registration issues during beta. Remove after beta validates step 3 of the checklist.
+
+Next action: resume beta validation from step 1 (add OAuth redirect URL to Slack app).
+
 ### Codex — 2026-06-09 (Railway beta pivot)
 Branch: `codex/plan-9-railway-beta-alignment`
 Status: Railway is now the immediate private-beta deployment path; AWS is no longer the active beta blocker.
