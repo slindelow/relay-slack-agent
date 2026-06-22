@@ -365,6 +365,7 @@ async def test_handle_disconnect_slack_search_revokes_token_and_responds():
         await handle_disconnect_slack_search(ack=ack, body=body, respond=respond)
 
     ack.assert_awaited_once()
+    mock_revoke.assert_awaited_once()
     respond.assert_awaited_once()
     call_text = respond.call_args[1].get("text") or (respond.call_args[0][0] if respond.call_args[0] else "")
     assert "disconnected" in call_text.lower()
