@@ -61,9 +61,8 @@ Marketplace submission package
 
 ## Known TODOs (non-blocking)
 
-- Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py` — next Codex task on `codex/mcp-rts-beta-foundation`
-- `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 - Railway beta uses `KMS_PROVIDER=none` plus `TOKEN_ENCRYPTION_KEY`; AWS KMS remains the later hardened production path.
+- `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 - Admin-driven connector setup exists for beta; full OAuth-based connector onboarding remains post-beta polish.
 
 ## Plan 9 Progress
@@ -83,7 +82,8 @@ Marketplace submission package
 - ✅ Added DB-backed Slack installation store tests.
 - 🚧 Next: deploy Railway beta, run beta preflight/live smoke, then run live Slack Connect beta validation.
 - ✅ Added MCP + Slack RTS context foundation locally: governed context contracts, MCP facade, Slack Search consent, encrypted per-user search tokens, context tool logs, `/relay ask` + draft context routing.
-- 🚧 Next: implement Redis idempotency, then resume Railway live Slack validation with `/slack/search/oauth_redirect` configured.
+- ✅ Added Redis SET NX idempotency for Slack Events API ingestion before DB/classifier work.
+- 🚧 Next: resume Railway live Slack validation with `/slack/search/oauth_redirect` configured.
 
 ## Plan 6 Progress
 

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     database_url: str
     test_database_url: str = "postgresql+asyncpg://relay:relay@localhost:5432/relay_test"
     redis_url: str = "redis://localhost:6379/0"
+    slack_event_dedup_ttl_seconds: int = 24 * 60 * 60
 
     token_encryption_key: str = Field(
         description="Legacy fallback key used before workspace KMS envelope encryption is migrated.",

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from contextlib import suppress
 
 from relay.worker.celery_app import celery
 from relay.worker.hubspot_tasks import sync_hubspot_accounts  # noqa: F401
@@ -11,6 +12,38 @@ logger = logging.getLogger(__name__)
 
 def make_dedup_key(team_id: str, channel_id: str, message_ts: str) -> str:
     return f"event:{team_id}:{channel_id}:{message_ts}"
+
+
+async def claim_event_dedup_key(
+    dedup_key: str,
+    *,
+    ttl_seconds: int,
+) -> bool:
+    """Atomically claim a Slack event idempotency key in Redis.
+
+    Returns True for the first delivery and False for duplicate deliveries.
+    If Redis is unavailable, RELAY continues processing rather than dropping a
+    customer message; /health already reports Redis as a required dependency.
+    """
+    try:
+        import redis.asyncio as redis
+
+        from relay.config import get_settings
+
+        client = redis.from_url(
+            get_settings().redis_url,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        try:
+            claimed = await client.set(dedup_key, "1", ex=ttl_seconds, nx=True)
+        finally:
+            with suppress(Exception):
+                await client.aclose()
+        return bool(claimed)
+    except Exception:
+        logger.exception("process_slack_event: redis dedup unavailable key=%s", dedup_key)
+        return True
 
 
 @celery.task(name="relay.process_slack_event")
@@ -41,10 +74,14 @@ async def _process_slack_event_async(payload: dict) -> None:
     sender_team_id = payload.get("team", team_id)
     text = payload.get("text", "")
 
-    # Dedup check using make_dedup_key
     dedup_key = make_dedup_key(team_id, slack_channel_id, ts)
-    # (Redis dedup is a TODO — log and continue for now)
-    logger.debug("Processing event dedup_key=%s", dedup_key)
+    if not await claim_event_dedup_key(
+        dedup_key,
+        ttl_seconds=settings.slack_event_dedup_ttl_seconds,
+    ):
+        logger.info("process_slack_event: duplicate event skipped key=%s", dedup_key)
+        return
+    logger.debug("process_slack_event: claimed dedup_key=%s", dedup_key)
 
     # Use a session WITHOUT workspace context to look up the channel
     # (we don't know workspace_id from the raw event alone)
