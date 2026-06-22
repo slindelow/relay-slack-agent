@@ -111,3 +111,97 @@ def test_build_home_with_questions_needing_draft():
     all_text = json.dumps(blocks)
     assert "relay_generate_draft" in all_text
     assert str(q.id) in all_text
+
+
+def test_modal_internal_slack_sources_shown_separately():
+    """Internal sources appear in 'Internal Slack context' section, not Sources."""
+    sources = [
+        {
+            "title": "#support-internal thread",
+            "provider": "slack_rts",
+            "url": "https://example.slack.com/archives/C123/p1",
+            "excerpt": "We handled this before in the SSO runbook.",
+            "visibility": "internal",
+            "stale": False,
+        }
+    ]
+    modal = build_draft_modal(_draft(sources=sources), _question(), None)
+    all_text = json.dumps(modal)
+    assert "Internal Slack context" in all_text
+    assert "#support-internal thread" in all_text
+    # Internal sources must NOT appear under the external "Sources:" header
+    # (there should be no "Sources:" section when all sources are internal)
+    assert "Sources:" not in all_text
+
+
+def test_modal_external_sources_not_in_internal_section():
+    """Customer-safe sources appear in Sources section, not Internal context."""
+    sources = [
+        {
+            "title": "GitHub issue #42",
+            "provider": "github",
+            "url": "https://github.com/org/repo/issues/42",
+            "excerpt": "Rate limit details.",
+            "visibility": "customer_safe",
+            "stale": False,
+        }
+    ]
+    modal = build_draft_modal(_draft(sources=sources), _question(), None)
+    all_text = json.dumps(modal)
+    assert "*Sources:*" in all_text
+    assert "GitHub issue #42" in all_text
+    assert "Internal Slack context" not in all_text
+
+
+def test_modal_mixed_sources_shows_both_sections():
+    """Mixed bundle produces both Internal Slack context and Sources sections."""
+    sources = [
+        {
+            "title": "Internal note",
+            "provider": "slack_rts",
+            "url": None,
+            "excerpt": "Team escalated this last week.",
+            "visibility": "internal",
+            "stale": False,
+        },
+        {
+            "title": "Docs article",
+            "provider": "google_drive",
+            "url": "https://docs.example.com/faq",
+            "excerpt": "See section 3 for setup.",
+            "visibility": "customer_safe",
+            "stale": False,
+        },
+    ]
+    modal = build_draft_modal(_draft(sources=sources), _question(), None)
+    all_text = json.dumps(modal)
+    assert "Internal Slack context" in all_text
+    assert "*Sources:*" in all_text
+
+
+def test_modal_excerpt_no_ellipsis_when_short():
+    """Short excerpts (<= 150 chars) don't get a trailing ellipsis."""
+    short = "Short excerpt."
+    sources = [
+        {"title": "Doc", "provider": "github", "url": None, "excerpt": short,
+         "visibility": "customer_safe", "stale": False}
+    ]
+    modal = build_draft_modal(_draft(sources=sources), _question(), None)
+    all_text = json.dumps(modal)
+    assert short in all_text
+    # The short excerpt should not have … appended
+    assert f"{short}…" not in all_text
+
+
+def test_modal_excerpt_ellipsis_when_long():
+    """Excerpts exceeding 150 chars get a trailing ellipsis."""
+    long_excerpt = "x" * 200
+    sources = [
+        {"title": "Doc", "provider": "github", "url": None, "excerpt": long_excerpt,
+         "visibility": "customer_safe", "stale": False}
+    ]
+    modal = build_draft_modal(_draft(sources=sources), _question(), None)
+    # Use ensure_ascii=False so the ellipsis character is not escaped to …
+    all_text = json.dumps(modal, ensure_ascii=False)
+    # Should contain the first 150 chars followed by …
+    assert "x" * 150 + "…" in all_text

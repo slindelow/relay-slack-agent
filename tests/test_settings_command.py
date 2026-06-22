@@ -326,3 +326,45 @@ async def test_sync_connector_action_enqueues_worker():
 
     mock_delay.assert_called_once_with(str(workspace.id), str(connector_id))
     respond.assert_awaited_once_with(response_type="ephemeral", text="Source sync started.")
+
+
+@pytest.mark.asyncio
+async def test_handle_disconnect_slack_search_revokes_token_and_responds():
+    """Disconnect handler revokes the user's token and confirms via respond."""
+    from relay.commands.settings import handle_disconnect_slack_search
+
+    body = {
+        "team": {"id": "T_DISCO"},
+        "user": {"id": "U_DISCO"},
+    }
+    ack = AsyncMock()
+    respond = AsyncMock()
+
+    workspace_mock = SimpleNamespace(id=uuid.uuid4())
+
+    # First context manager (cross-tenant): returns workspace
+    session_ctx_cross = AsyncMock()
+    session_ctx_cross.__aenter__ = AsyncMock(return_value=session_ctx_cross)
+    session_ctx_cross.__aexit__ = AsyncMock(return_value=False)
+    session_ctx_cross.execute = AsyncMock(
+        return_value=_ScalarResult(workspace_mock)
+    )
+
+    # Second context manager (tenant-scoped): just needs to work
+    session_ctx_scoped = AsyncMock()
+    session_ctx_scoped.__aenter__ = AsyncMock(return_value=session_ctx_scoped)
+    session_ctx_scoped.__aexit__ = AsyncMock(return_value=False)
+
+    def _get_session_side_effect(workspace_id=None):
+        return session_ctx_cross if workspace_id is None else session_ctx_scoped
+
+    with (
+        patch("relay.commands.settings.get_session", side_effect=_get_session_side_effect),
+        patch("relay.commands.settings.revoke_user_search_tokens", new=AsyncMock()) as mock_revoke,
+    ):
+        await handle_disconnect_slack_search(ack=ack, body=body, respond=respond)
+
+    ack.assert_awaited_once()
+    respond.assert_awaited_once()
+    call_text = respond.call_args[1].get("text") or (respond.call_args[0][0] if respond.call_args[0] else "")
+    assert "disconnected" in call_text.lower()

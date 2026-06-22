@@ -5,7 +5,7 @@ import uuid
 import pytest
 from sqlalchemy import select, text
 
-from relay.context.slack_rts import _sources_from_rts_response, slack_search_status, store_user_search_token
+from relay.context.slack_rts import _sources_from_rts_response, revoke_user_search_tokens, slack_search_status, store_user_search_token
 from relay.crypto import decrypt_token
 from relay.db.models import User, UserSlackSearchToken
 from relay.slack.oauth import upsert_workspace_from_install
@@ -118,3 +118,66 @@ async def test_store_user_search_token_encrypts_and_replaces_active_token(db_ses
         select(UserSlackSearchToken).where(UserSlackSearchToken.workspace_id == workspace.id)
     )
     assert len(list(rows.scalars())) == 2
+
+
+@pytest.mark.asyncio
+async def test_revoke_user_search_tokens_marks_active_token_revoked(db_session, relay_settings):
+    workspace = await upsert_workspace_from_install(db_session, "T_REVOKE", "Revoke Corp")
+    await db_session.flush()
+    await db_session.execute(
+        text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
+        {"workspace_id": str(workspace.id)},
+    )
+
+    await store_user_search_token(
+        db_session,
+        workspace_id=workspace.id,
+        slack_user_id="U_REVOKE",
+        access_token="xoxp-revoke-token",
+        scopes="search:read.public",
+    )
+    await db_session.flush()
+
+    # Confirm it exists and is active
+    result = await db_session.execute(
+        select(UserSlackSearchToken).where(
+            UserSlackSearchToken.workspace_id == workspace.id,
+            UserSlackSearchToken.slack_user_id == "U_REVOKE",
+            UserSlackSearchToken.is_revoked.is_(False),
+        )
+    )
+    assert result.scalar_one_or_none() is not None
+
+    # Revoke
+    await revoke_user_search_tokens(
+        db_session,
+        workspace_id=workspace.id,
+        slack_user_id="U_REVOKE",
+    )
+    await db_session.flush()
+
+    # Confirm it is now revoked
+    result = await db_session.execute(
+        select(UserSlackSearchToken).where(
+            UserSlackSearchToken.workspace_id == workspace.id,
+            UserSlackSearchToken.slack_user_id == "U_REVOKE",
+            UserSlackSearchToken.is_revoked.is_(False),
+        )
+    )
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_revoke_user_search_tokens_noop_when_no_tokens(db_session, relay_settings):
+    workspace = await upsert_workspace_from_install(db_session, "T_NOOP", "NoToken Corp")
+    await db_session.flush()
+    await db_session.execute(
+        text("SELECT set_config('app.current_workspace_id', :workspace_id, true)"),
+        {"workspace_id": str(workspace.id)},
+    )
+    # Should not raise even if there are no tokens to revoke
+    await revoke_user_search_tokens(
+        db_session,
+        workspace_id=workspace.id,
+        slack_user_id="U_NO_TOKENS",
+    )
