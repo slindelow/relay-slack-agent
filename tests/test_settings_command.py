@@ -118,6 +118,7 @@ async def test_handle_settings_returns_blocks(monkeypatch):
             _ScalarResult(1),
             _ScalarResult(3),
             _ScalarsResult([]),
+            _ScalarResult(None),
         ]
     )
 
@@ -161,6 +162,7 @@ async def test_handle_settings_bootstraps_first_admin(monkeypatch):
             _ScalarResult(0),
             _ScalarResult(0),
             _ScalarsResult([]),
+            _ScalarResult(None),
         ]
     )
     scoped_session.add = MagicMock()

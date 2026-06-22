@@ -96,12 +96,12 @@ def test_erase_user_nulls_pii_for_admin():
     scoped = AsyncMock()
     scoped.add = MagicMock()
     scoped.execute = AsyncMock(
-        side_effect=[
-            _result(admin),
-            _result(user),
-            *[MagicMock() for _ in range(12)],
-        ]
-    )
+            side_effect=[
+                _result(admin),
+                _result(user),
+                *[MagicMock() for _ in range(13)],
+            ]
+        )
 
     with (
         patch("relay.api.main._slack_auth_test", new=AsyncMock(return_value={"team_id": "T123", "user_id": "UADMIN"})),
@@ -121,5 +121,5 @@ def test_erase_user_nulls_pii_for_admin():
     assert user.display_name is None
     assert user.email is None
     assert user.deleted_at is not None
-    assert scoped.execute.call_count == 14
+    assert scoped.execute.call_count == 15
     assert scoped.add.call_args.args[0].event_type == "user_erased"

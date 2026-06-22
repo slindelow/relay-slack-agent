@@ -7,7 +7,9 @@ import re
 
 from sqlalchemy import select
 
-from relay.connectors.retrieval import RetrievedChunk, retrieve
+from relay.context.contracts import ContextSource
+from relay.context.service import search_indexed_knowledge, search_slack_context
+from relay.context.slack_rts import slack_search_status
 from relay.db.models import Workspace
 from relay.db.session import get_session
 
@@ -33,32 +35,42 @@ def _escape_mrkdwn(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def _format_result_blocks(chunks: list[RetrievedChunk]) -> list[dict]:
+def _format_result_blocks(chunks: list[ContextSource], *, slack_search_connected: bool = True) -> list[dict]:
     blocks: list[dict] = [
         {"type": "section", "text": {"type": "mrkdwn", "text": "*Top RELAY sources*"}},
         {"type": "divider"},
     ]
 
     for chunk in chunks:
-        citation = chunk.citation or {}
-        title = citation.get("title") or "Retrieved source"
-        provider = citation.get("provider") or "retrieval"
-        url = citation.get("url")
+        title = chunk.title or "Retrieved source"
+        provider = chunk.provider or "retrieval"
+        url = chunk.url
         escaped_title = _escape_mrkdwn(title)
         if url and url.startswith("https://"):
             title_text = f"<{url}|{escaped_title}>"
         else:
             title_text = escaped_title
-        freshness = "stale" if citation.get("stale") else "fresh"
-        excerpt = _escape_mrkdwn(_truncate(chunk.content.replace("\n", " ")))
+        freshness = "stale" if chunk.stale else "fresh"
+        visibility = "internal" if chunk.visibility == "internal" else "customer-safe"
+        excerpt = _escape_mrkdwn(_truncate(chunk.excerpt.replace("\n", " ")))
 
         blocks.append(
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{title_text}* `{provider}` _{freshness}_\n>{excerpt}",
+                    "text": f"*{title_text}* `{provider}` `{visibility}` _{freshness}_\n>{excerpt}",
                 },
+            }
+        )
+    if not slack_search_connected:
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [{
+                    "type": "mrkdwn",
+                    "text": "Connect Slack Search in `/relay settings` to include internal Slack context.",
+                }],
             }
         )
 
@@ -90,17 +102,40 @@ async def handle_ask(ack, respond, command) -> None:
                 return
 
         async with get_session(workspace_id=workspace.id) as session:
-            chunks = await retrieve(workspace.id, query, session, top_k=5)
+            status = await slack_search_status(
+                session,
+                workspace_id=workspace.id,
+                slack_user_id=command.get("user_id", ""),
+            )
+            indexed_chunks = await search_indexed_knowledge(
+                workspace.id,
+                query,
+                session,
+                top_k=5,
+                actor_slack_user_id=command.get("user_id", ""),
+            )
+            slack_chunks = await search_slack_context(
+                workspace.id,
+                command.get("user_id", ""),
+                query,
+                session,
+                top_k=5,
+            )
+            chunks = [*indexed_chunks, *slack_chunks]
+            slack_search_connected = status.connected
     except Exception as exc:
         logger.exception("ask_failed team=%s", slack_team_id)
         await respond(response_type="ephemeral", text=f"Ask failed: {type(exc).__name__}")
         return
 
     if not chunks:
-        await respond(
-            response_type="ephemeral",
-            text="No relevant sources found in connected knowledge base.",
-        )
+        text = "No relevant sources found in connected knowledge base."
+        if not slack_search_connected:
+            text += " Connect Slack Search in `/relay settings` to include internal Slack context."
+        await respond(response_type="ephemeral", text=text)
         return
 
-    await respond(response_type="ephemeral", blocks=_format_result_blocks(chunks))
+    await respond(
+        response_type="ephemeral",
+        blocks=_format_result_blocks(chunks, slack_search_connected=slack_search_connected),
+    )

@@ -72,7 +72,12 @@ async def _generate_draft_async(workspace_id: uuid.UUID, question_id: uuid.UUID)
     # Generate draft
     try:
         async with get_session(workspace_id) as session:
-            bundle = await assemble_evidence(workspace_id, question_id, session)
+            bundle = await assemble_evidence(
+                workspace_id,
+                question_id,
+                session,
+                acting_slack_user_id=csm_slack_user_id,
+            )
             await generate_draft(workspace_id, question_id, bundle, session)
 
         if csm_slack_user_id:

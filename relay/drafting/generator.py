@@ -41,6 +41,7 @@ Rules:
 - If evidence is empty or insufficient, set customer_draft to empty string and confidence <= 0.3
 - Keep customer_draft concise and professional (under 2000 characters)
 - Cite sources by their index number in internal_brief
+- Sources marked visibility="internal" may inform the response, but their URLs and Slack permalinks must never appear in customer_draft
 - Flag risks and unknown information clearly
 
 Call the submit_draft tool with your analysis."""
@@ -79,6 +80,7 @@ def _build_user_message(bundle: EvidenceBundle) -> str:
                 f"Title: {src.title}\n"
                 f"Provider: {src.provider}\n"
                 f"URL: {src.url or 'N/A'}\n"
+                f"Visibility: {getattr(src, 'visibility', 'customer_safe')}\n"
                 f"Freshness: {'STALE' if src.stale else 'fresh'}\n"
                 f"Content:\n{src.excerpt}\n"
                 f"</retrieved_source>\n"
@@ -176,6 +178,7 @@ async def _save_draft(
                     "excerpt": s.excerpt,
                     "freshness_ts": s.freshness_ts.isoformat() if s.freshness_ts else None,
                     "stale": s.stale,
+                    "visibility": getattr(s, "visibility", "customer_safe"),
                 }
                 for s in bundle.sources
             ],

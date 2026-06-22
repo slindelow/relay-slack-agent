@@ -17,6 +17,7 @@
 | 7 — Marketplace Readiness | KMS encryption, deletion flows, privacy policy, reviewer sandbox | ✅ Complete locally — legal pages, scope doc, health/Sentry, deletion/purge, KMS, user erasure, reviewer sandbox, CI Celery health | Local branch `codex/plan-7-marketplace-readiness` |
 | 8 — Security Hardening | Admin/CSM guards, tenant-scoped action lookups, OAuth/erasure token hardening, deletion/audit cleanup, log redaction, retry/model config cleanup | ✅ Complete locally — full suite green | Local branch `claude/plan-8-security-hardening` |
 | 9 — Private Beta Launch | Railway deployment, Slack manifest/install path, onboarding UX, connector/CRM readiness, beta encryption smoke, live beta validation, external docs | 🚧 Active next plan | `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md` |
+| 10 — MCP + Slack RTS Context | MCP context tools, Slack Real-Time Search user consent, context audit logs, ask/drafting context boundary | ✅ Complete locally on `codex/mcp-rts-beta-foundation` | Local branch |
 
 ---
 
@@ -60,7 +61,7 @@ Marketplace submission package
 
 ## Known TODOs (non-blocking)
 
-- Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py`
+- Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py` — next Codex task on `codex/mcp-rts-beta-foundation`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 - Railway beta uses `KMS_PROVIDER=none` plus `TOKEN_ENCRYPTION_KEY`; AWS KMS remains the later hardened production path.
 - Admin-driven connector setup exists for beta; full OAuth-based connector onboarding remains post-beta polish.
@@ -81,6 +82,8 @@ Marketplace submission package
 - ✅ Added beta GitHub/Google Drive connector setup modals, encrypted credential storage, and sync enqueue from `/relay settings`.
 - ✅ Added DB-backed Slack installation store tests.
 - 🚧 Next: deploy Railway beta, run beta preflight/live smoke, then run live Slack Connect beta validation.
+- ✅ Added MCP + Slack RTS context foundation locally: governed context contracts, MCP facade, Slack Search consent, encrypted per-user search tokens, context tool logs, `/relay ask` + draft context routing.
+- 🚧 Next: implement Redis idempotency, then resume Railway live Slack validation with `/slack/search/oauth_redirect` configured.
 
 ## Plan 6 Progress
 

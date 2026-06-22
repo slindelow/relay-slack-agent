@@ -84,6 +84,30 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 
 ## Agent Updates
 
+### Codex — 2026-06-22 (MCP + Slack Real-Time Search foundation)
+Branch: `codex/mcp-rts-beta-foundation`
+Status: MCP + RTS foundation implemented locally; preparing incremental commits before beta validation resumes.
+
+Work completed:
+- Added governed context contracts/service under `relay/context/`.
+- Added MCP facade exposing RELAY context tools: question context, account context, indexed knowledge search, Slack RTS search, and evidence assembly.
+- Added Slack Real-Time Search user-token consent flow via `/slack/search/install` and `/slack/search/oauth_redirect`.
+- Added per-user encrypted Slack search tokens and context tool audit logs in migration `0010_mcp_rts_context.py`.
+- Routed `/relay ask` and draft evidence assembly through the context boundary.
+- Kept Slack RTS to internal public-channel search for v1; registered Slack Connect channels are excluded when Slack result channel IDs are available.
+- Updated Slack manifest/user scopes and Marketplace scope justification for `search:read.public`, `search:read.files`, and `search:read.users`.
+
+Validation:
+- `uv run pytest -q` — 299 passed, 32 skipped, 1 warning.
+- `uv run python -m compileall -q relay tests` — passed.
+- `git diff --check` — passed.
+
+Coordination notes for Claude:
+- Please treat Railway as the first real beta integration environment; local Docker/Postgres/Redis remains useful for repeatable smoke tests, but real Slack OAuth/RTS/Connect behavior needs the deployed Railway app.
+- Before live validation, Slack app redirect URLs must include `/slack/search/oauth_redirect` in addition to existing app OAuth redirects.
+- Railway variables now need `SLACK_SEARCH_USER_SCOPES` only if overriding the default `search:read.public,search:read.files,search:read.users`.
+- Next Codex task on this branch: implement Redis idempotency for Slack Events API ingestion.
+
 ### Claude — 2026-06-10 (Channel registration + worker fixes)
 Branch: `main` (committed directly to main — operational fixes)
 Status: Two bugs surfaced during beta validation attempt, both fixed and merged.

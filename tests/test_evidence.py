@@ -4,18 +4,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from relay.drafting.evidence import (
-    EvidenceBundle,
-    EvidenceSource,
-    _count_tokens,
-    _is_stale,
-    _source_priority,
-    assemble_evidence,
-)
+from relay.context.contracts import EvidenceBundle
+from relay.context.service import _count_tokens, _is_stale, _source_priority
+from relay.drafting.evidence import assemble_evidence
 
 
 def test_source_priority_order():
@@ -45,83 +40,29 @@ def test_count_tokens_nonempty():
 def test_count_tokens_empty():
     assert _count_tokens("") == 0
 
-
-def _make_session_with_question(question_text: str = "Why does my API return 500?", channel_id=None):
-    """Build an AsyncMock session that returns a (Question, Message) row."""
-    mock_question = MagicMock()
-    mock_question.channel_id = channel_id
-    mock_question.title_excerpt = question_text
-
-    mock_message = MagicMock()
-    mock_message.raw_excerpt = question_text
-
-    lookup_result = MagicMock()
-    lookup_result.one_or_none.return_value = (mock_question, mock_message)
-
+@pytest.mark.asyncio
+async def test_assemble_evidence_delegates_to_context_service():
+    workspace_id = uuid.uuid4()
+    question_id = uuid.uuid4()
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=lookup_result)
-    return session
+    expected = EvidenceBundle(question_excerpt="Why does my API return 500?", account_context={})
 
+    with patch(
+        "relay.drafting.evidence.assemble_evidence_for_question",
+        new=AsyncMock(return_value=expected),
+    ) as mocked:
+        bundle = await assemble_evidence(
+            workspace_id,
+            question_id,
+            session,
+            acting_slack_user_id="U_CSM",
+        )
 
-@pytest.mark.asyncio
-async def test_assemble_evidence_no_question():
-    lookup_result = MagicMock()
-    lookup_result.one_or_none.return_value = None
-    session = AsyncMock()
-    session.execute = AsyncMock(return_value=lookup_result)
-
-    with pytest.raises(ValueError, match="not found"):
-        await assemble_evidence(uuid.uuid4(), uuid.uuid4(), session)
-
-
-@pytest.mark.asyncio
-async def test_assemble_evidence_empty_sources():
-    """When retrieve() returns nothing, sources list is empty."""
-    workspace_id = uuid.uuid4()
-    question_id = uuid.uuid4()
-    session = _make_session_with_question()
-
-    with patch("relay.drafting.evidence.retrieve", new_callable=AsyncMock, return_value=[]):
-        bundle = await assemble_evidence(workspace_id, question_id, session)
-
-    assert "Why does my API return 500?" in bundle.question_excerpt
-    assert bundle.sources == []
-    assert bundle.total_tokens > 0
-
-
-@pytest.mark.asyncio
-async def test_assemble_evidence_deduplicates():
-    """Same URL from two retrieve() calls should appear once."""
-    workspace_id = uuid.uuid4()
-    question_id = uuid.uuid4()
-    session = _make_session_with_question("Test question")
-
-    chunk = MagicMock()
-    chunk.content = "Some content"
-    chunk.citation = {"title": "Issue #1", "url": "https://github.com/org/repo/issues/1", "updated_at": None, "stale": False}
-
-    with patch("relay.drafting.evidence.retrieve", new_callable=AsyncMock, return_value=[chunk, chunk]):
-        bundle = await assemble_evidence(workspace_id, question_id, session)
-
-    urls = [s.url for s in bundle.sources]
-    assert len(urls) == len(set(u for u in urls if u))
-
-
-@pytest.mark.asyncio
-async def test_assemble_evidence_token_budget():
-    """Sources exceeding token budget are dropped."""
-    workspace_id = uuid.uuid4()
-    question_id = uuid.uuid4()
-    session = _make_session_with_question("short")
-
-    big_chunks = []
-    for i in range(20):
-        c = MagicMock()
-        c.content = "word " * 1000
-        c.citation = {"title": f"Doc {i}", "url": f"https://example.com/{i}", "updated_at": None, "stale": False}
-        big_chunks.append(c)
-
-    with patch("relay.drafting.evidence.retrieve", new_callable=AsyncMock, return_value=big_chunks):
-        bundle = await assemble_evidence(workspace_id, question_id, session)
-
-    assert bundle.total_tokens <= 8000
+    assert bundle is expected
+    mocked.assert_awaited_once_with(
+        workspace_id,
+        question_id,
+        session,
+        draft_id=None,
+        acting_slack_user_id="U_CSM",
+    )
