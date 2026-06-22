@@ -253,6 +253,24 @@ def _sources_from_rts_response(
     return [source for source in sources if source.excerpt.strip()]
 
 
+async def _revoke_user_search_tokens(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    slack_user_id: str,
+) -> None:
+    result = await session.execute(
+        select(UserSlackSearchToken).where(
+            UserSlackSearchToken.workspace_id == workspace_id,
+            UserSlackSearchToken.slack_user_id == slack_user_id,
+            UserSlackSearchToken.is_revoked.is_(False),
+        )
+    )
+    for token in result.scalars():
+        token.is_revoked = True
+        token.revoked_at = datetime.now(UTC)
+
+
 def _parse_slack_ts(value: Any) -> datetime | None:
     if value is None:
         return None

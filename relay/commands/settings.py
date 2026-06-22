@@ -82,6 +82,17 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "text": {"type": "plain_text", "text": "Enable Slack Search"},
             "url": search_connect_url,
         },
+        *(
+            [{
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Disconnect Slack Search"},
+                "action_id": "relay_disconnect_slack_search",
+                "value": "disconnect",
+                "style": "danger",
+            }]
+            if status.slack_search_connected
+            else []
+        ),
         {
             "type": "button",
             "text": {"type": "plain_text", "text": "Open install page"},
@@ -505,6 +516,33 @@ async def handle_save_github_connector(ack, body):
             credentials=token.strip(),
             config={"repo_list": repos, "markdown_paths": markdown_paths},
         )
+
+
+async def handle_disconnect_slack_search(ack, body, respond) -> None:
+    """Revoke the requesting user's Slack search token."""
+    await ack()
+    slack_team_id = (body.get("team") or {}).get("id") or body.get("team_id", "")
+    slack_user_id = (body.get("user") or {}).get("id") or body.get("user_id", "")
+    if not slack_team_id or not slack_user_id:
+        await respond(response_type="ephemeral", text="Unable to disconnect: missing workspace or user.")
+        return
+    try:
+        async with get_session() as session:
+            workspace_result = await session.execute(
+                select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+            )
+            workspace = workspace_result.scalar_one_or_none()
+        if workspace is None:
+            await respond(response_type="ephemeral", text="Workspace not found.")
+            return
+        async with get_session(workspace_id=workspace.id) as session:
+            from relay.context.slack_rts import _revoke_user_search_tokens
+            await _revoke_user_search_tokens(session, workspace_id=workspace.id, slack_user_id=slack_user_id)
+    except Exception:
+        logger.exception("disconnect_slack_search_failed team=%s user=%s", slack_team_id, slack_user_id)
+        await respond(response_type="ephemeral", text="Failed to disconnect Slack Search. Please try again.")
+        return
+    await respond(response_type="ephemeral", text=":white_check_mark: Slack Search context disconnected.")
 
 
 async def handle_save_google_drive_connector(ack, body):
