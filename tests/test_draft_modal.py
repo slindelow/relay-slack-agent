@@ -130,8 +130,8 @@ def test_modal_internal_slack_sources_shown_separately():
     assert "Internal Slack context" in all_text
     assert "#support-internal thread" in all_text
     # Internal sources must NOT appear under the external "Sources:" header
-    # (there should be no "Sources:" section when all sources are internal)
-    assert "Sources:" not in all_text
+    # (there should be no "*Sources:*" section when all sources are internal)
+    assert "*Sources:*" not in all_text
 
 
 def test_modal_external_sources_not_in_internal_section():

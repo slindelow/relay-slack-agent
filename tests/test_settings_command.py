@@ -360,12 +360,16 @@ async def test_handle_disconnect_slack_search_revokes_token_and_responds():
 
     with (
         patch("relay.commands.settings.get_session", side_effect=_get_session_side_effect),
-        patch("relay.commands.settings.revoke_user_search_tokens", new=AsyncMock()) as mock_revoke,
+        patch("relay.commands.settings.revoke_user_search_tokens") as mock_revoke,
     ):
         await handle_disconnect_slack_search(ack=ack, body=body, respond=respond)
 
     ack.assert_awaited_once()
-    mock_revoke.assert_awaited_once()
+    mock_revoke.assert_awaited_once_with(
+        session_ctx_scoped,
+        workspace_id=workspace_mock.id,
+        slack_user_id="U_DISCO",
+    )
     respond.assert_awaited_once()
-    call_text = respond.call_args[1].get("text") or (respond.call_args[0][0] if respond.call_args[0] else "")
+    call_text = respond.await_args.kwargs.get("text") or ""
     assert "disconnected" in call_text.lower()

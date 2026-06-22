@@ -103,7 +103,7 @@ async def test_store_user_search_token_encrypts_and_replaces_active_token(db_ses
     assert decrypt_token(
         second.encrypted_access_token,
         second.encrypted_access_token_nonce,
-        b"\xaa" * 32,
+        relay_settings.token_encryption_key_bytes,
     ) == "xoxp-second"
 
     status = await slack_search_status(
