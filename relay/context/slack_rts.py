@@ -253,7 +253,7 @@ def _sources_from_rts_response(
     return [source for source in sources if source.excerpt.strip()]
 
 
-async def _revoke_user_search_tokens(
+async def revoke_user_search_tokens(
     session: AsyncSession,
     *,
     workspace_id: uuid.UUID,

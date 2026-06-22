@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from relay.config import get_settings
-from relay.context.slack_rts import slack_search_status
+from relay.context.slack_rts import revoke_user_search_tokens, slack_search_status
 from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
 from relay.db.models import CrmConnection, MonitoredChannel, SourceConnector, User, Workspace
 from relay.db.session import get_session
@@ -536,8 +536,7 @@ async def handle_disconnect_slack_search(ack, body, respond) -> None:
             await respond(response_type="ephemeral", text="Workspace not found.")
             return
         async with get_session(workspace_id=workspace.id) as session:
-            from relay.context.slack_rts import _revoke_user_search_tokens
-            await _revoke_user_search_tokens(session, workspace_id=workspace.id, slack_user_id=slack_user_id)
+            await revoke_user_search_tokens(session, workspace_id=workspace.id, slack_user_id=slack_user_id)
     except Exception:
         logger.exception("disconnect_slack_search_failed team=%s user=%s", slack_team_id, slack_user_id)
         await respond(response_type="ephemeral", text="Failed to disconnect Slack Search. Please try again.")

@@ -108,9 +108,11 @@ def build_draft_modal(
         for i, src in enumerate(internal_sources[:10], 1):
             url = src.get("url")
             link = f"<{url}|{src.get('title', 'Source')}>" if url else src.get("title", "Source")
+            excerpt = src.get('excerpt', '')
+            truncated = excerpt[:150] + ('…' if len(excerpt) > 150 else '')
             internal_lines.append(
                 f"{i}. {link} [{src.get('provider', '')}]\n"
-                f"   _{src.get('excerpt', '')[:150]}…_"
+                f"   _{truncated}_"
             )
         blocks.append({
             "type": "section",
@@ -125,9 +127,11 @@ def build_draft_modal(
             stale_flag = " :warning: stale" if src.get("stale") else ""
             url = src.get("url")
             link = f"<{url}|{src.get('title', 'Source')}>" if url else src.get("title", "Source")
+            excerpt = src.get('excerpt', '')
+            truncated = excerpt[:150] + ('…' if len(excerpt) > 150 else '')
             citation_lines.append(
                 f"{i}. {link} [{src.get('provider', '')}]{stale_flag}\n"
-                f"   _{src.get('excerpt', '')[:150]}…_"
+                f"   _{truncated}_"
             )
         blocks.append({
             "type": "section",
