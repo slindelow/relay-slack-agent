@@ -172,20 +172,20 @@ Document the threshold decision in `docs/HANDOFF.md` with the evaluation date an
 
 | Step | Pass | Tested By | Date | Notes |
 |------|------|-----------|------|-------|
-| 1 — Install | ⏳ BLOCKED | — | — | Requires OAuth redirect URL added to Slack app settings (see below) |
-| 2 — App Home 1/4 | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 3 — Channel registered | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 4 — HubSpot connected | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 5 — Knowledge source | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 6 — Setup complete | ⏳ BLOCKED | — | — | Depends on steps 1-5 |
-| 7 — Question classified | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 8 — SLA timer | ⏳ BLOCKED | — | — | Depends on step 7 |
-| 9 — Claim and draft | ⏳ BLOCKED | — | — | Depends on step 7 |
-| 10 — Send response | ⏳ BLOCKED | — | — | Depends on step 9 |
-| 11 — Knowledge search | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 12 — Account pulse | ⏳ BLOCKED | — | — | Depends on steps 1 + 4 |
-| 13 — Workspace deletion | ⏳ BLOCKED | — | — | Depends on step 1 |
-| 14 — Uninstall | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 1 — Install | ✅ PASS | sofialindelow | 2026-06-10 | OAuth install completed into "RELAY Beta" workspace. Redirect URL working. |
+| 2 — App Home 1/4 | ✅ PASS | sofialindelow | 2026-06-10 | App Home showed 1/4 setup items complete (admin configured). |
+| 3 — Channel registered | ⏳ PENDING | — | — | Previously FAILED (channel bug). Bug fixed 2026-06-10 (`eae4772`). Re-run: `/relay register #channel TestCo` in test workspace. |
+| 4 — HubSpot connected | ⏳ PENDING | — | — | Requires `HUBSPOT_CLIENT_ID/SECRET/REDIRECT_URI` set in Railway + HubSpot OAuth. |
+| 5 — Knowledge source | ⏳ PENDING | — | — | Requires `VOYAGE_API_KEY` in Railway + GitHub PAT via `/relay settings`. |
+| 6 — Setup complete | ⏳ PENDING | — | — | Depends on steps 3-5 |
+| 7 — Question classified | ⏳ PENDING | — | — | Post question in registered channel; verify `questions` row within 30s and CSM DM. |
+| 8 — SLA timer | ⏳ PENDING | — | — | Wait 2min after step 7; `/relay pulse TestCo`; no premature breach alert. |
+| 9 — Claim and draft | ⏳ PENDING | — | — | Click Claim in CSM DM; draft modal opens within 5s with cited evidence. |
+| 10 — Send response | ⏳ PENDING | — | — | Click Send in modal; bot posts in channel; question → resolved. |
+| 11 — Knowledge search | ⏳ PENDING | — | — | `/relay ask refund policy` → cited result; non-match query → graceful empty. |
+| 12 — Account pulse | ⏳ PENDING | — | — | `/relay pulse TestCo` → name, tier, ARR, open questions, SLA rate. |
+| 13 — Workspace deletion | ⏳ PENDING | — | — | `/relay delete-workspace-data` → confirm → verify full purge and token revoke. |
+| 14 — Uninstall | ⏳ PENDING | — | — | Remove app from Slack workspace → verify `app_uninstalled` handler + token revoked. |
 
 ---
 
@@ -200,22 +200,29 @@ curl https://web-production-acd3.up.railway.app/health
 
 FastAPI web service, PostgreSQL (pgvector), and Redis are all healthy.
 
-### ❌ BLOCKER: OAuth Redirect URL Not Registered
+### ✅ OAuth Redirect URL Registered
 
-The Slack app manifest in `slack-app-manifest.yaml` previously had placeholder URLs (`relay-beta.example.com`). The manifest has been updated to the correct Railway URLs, but the **Slack app settings at api.slack.com/apps must be updated manually**:
+Steps 1 and 2 were confirmed completed on 2026-06-10 — the OAuth install flow completed successfully into the "RELAY Beta" workspace, which confirms `https://web-production-acd3.up.railway.app/slack/oauth_redirect` is registered in the Slack app settings.
 
-**Required action (human — needs Slack app admin access):**
+### ⏳ Steps 3-14: Require Human Slack Interaction
 
-1. Generate the deployment manifest:
-   ```bash
-   ./scripts/configure-manifest.sh https://web-production-acd3.up.railway.app
-   # Outputs: slack-app-manifest-generated.yaml
-   ```
+Steps 3-14 cannot be automated — they require a human to interact with the live Slack workspace. Resume from step 3:
 
-2. Go to https://api.slack.com/apps → select the RELAY Beta app → **App Manifest**
-3. Paste the contents of `slack-app-manifest-generated.yaml` and click **Save Changes**
+**Minimum Railway env vars to set before steps 4-12:**
+```
+HUBSPOT_CLIENT_ID=<from HubSpot developer account>
+HUBSPOT_CLIENT_SECRET=<from HubSpot developer account>
+HUBSPOT_REDIRECT_URI=https://web-production-acd3.up.railway.app/hubspot/oauth_redirect
+VOYAGE_API_KEY=<from dash.voyageai.com>
+```
 
-This updates all URLs in one step: slash command URL, OAuth redirect URLs (including `/slack/search/oauth_redirect`), and event subscription/interactivity request URLs.
+**To add these via Railway CLI:**
+```bash
+railway variables set HUBSPOT_CLIENT_ID=<value> --service web
+railway variables set HUBSPOT_CLIENT_SECRET=<value> --service web
+railway variables set HUBSPOT_REDIRECT_URI=https://web-production-acd3.up.railway.app/hubspot/oauth_redirect --service web
+railway variables set VOYAGE_API_KEY=<value> --service web
+railway variables set VOYAGE_API_KEY=<value> --service worker
+```
 
-**Once the Slack app is updated**, resume from Step 1 of the checklist above using the Railway install URL:
-`https://web-production-acd3.up.railway.app/`
+**Resume from:** Open the "RELAY Beta" workspace in Slack → invite RELAY to a test channel → `/relay register #test-channel TestCo`
