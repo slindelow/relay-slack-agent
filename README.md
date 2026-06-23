@@ -147,6 +147,54 @@ Private beta install page:
 open http://localhost:3000/
 ```
 
+## MCP Server
+
+RELAY exposes a Model Context Protocol server that gives AI assistants (including Claude) governed access to RELAY's context tools. The server is automatically mounted at `/mcp` when the FastAPI app starts.
+
+### Available Tools
+
+| Tool name | Description |
+|-----------|-------------|
+| `question_lookup` | Fetch full context for a classified question (excerpt, urgency, account, channel) |
+| `evidence_assembly` | Assemble a complete evidence bundle for a question (pgvector + CRM + Slack RTS) |
+| `draft_generation` | Assemble evidence and generate a human-review-required customer draft (load-bearing path) |
+| `get_question_context` | Low-level question context fetch |
+| `get_account_context` | Low-level account context fetch |
+| `search_indexed_knowledge` | Semantic search over indexed knowledge entries |
+| `search_slack_context` | Permission-aware internal Slack search (requires user search token) |
+| `assemble_evidence_for_question` | Full evidence bundle assembly |
+
+### Start the MCP server (stdio mode, for `claude mcp` or MCP inspector)
+
+```bash
+uv run python -m relay.context.mcp_server
+```
+
+### MCP over HTTP (SSE transport — starts automatically with the FastAPI app)
+
+```bash
+uv run uvicorn relay.api.main:api --port 3000 --reload
+# MCP endpoint: http://localhost:3000/mcp/sse
+```
+
+Connect with MCP inspector:
+```bash
+npx @modelcontextprotocol/inspector http://localhost:3000/mcp/sse
+```
+
+Or add to Claude Code's MCP config (`~/.claude.json`):
+```json
+{
+  "mcpServers": {
+    "relay": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "relay.context.mcp_server"],
+      "cwd": "/path/to/relay"
+    }
+  }
+}
+```
+
 ## Tests
 
 ```bash

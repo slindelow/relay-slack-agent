@@ -23,6 +23,10 @@ async def get_question_context_tool(workspace_id: str, question_id: str) -> dict
         return context.to_prompt_dict()
 
 
+# Alias required by MCP spec: question_lookup
+question_lookup_tool = get_question_context_tool
+
+
 async def get_account_context_tool(workspace_id: str, account_id: str) -> dict[str, Any]:
     wid = uuid.UUID(workspace_id)
     aid = uuid.UUID(account_id)
@@ -79,6 +83,42 @@ async def assemble_evidence_for_question_tool(
         return bundle.to_prompt_dict()
 
 
+# Alias required by MCP spec: evidence_assembly
+evidence_assembly_tool = assemble_evidence_for_question_tool
+
+
+async def draft_generation_tool(
+    workspace_id: str,
+    question_id: str,
+    acting_slack_user_id: str | None = None,
+) -> dict[str, Any]:
+    """Assemble evidence and generate a draft — the load-bearing MCP entrypoint for draft generation."""
+    from relay.drafting.generator import generate_draft
+
+    wid = uuid.UUID(workspace_id)
+    qid = uuid.UUID(question_id)
+    async with get_session(wid) as session:
+        bundle = await assemble_evidence_for_question(
+            wid,
+            qid,
+            session,
+            acting_slack_user_id=acting_slack_user_id,
+        )
+        output = await generate_draft(wid, qid, bundle, session)
+
+    return {
+        "question_id": question_id,
+        "workspace_id": workspace_id,
+        "customer_draft": output.customer_draft,
+        "internal_brief": output.internal_brief,
+        "confidence": output.confidence,
+        "risks_or_unknowns": output.risks_or_unknowns,
+        "recommended_next_action": output.recommended_next_action,
+        "requires_human_review": True,
+        "source_count": len(bundle.sources),
+    }
+
+
 def build_mcp_server():
     """Return a FastMCP server when the optional MCP runtime is installed."""
     try:
@@ -87,11 +127,19 @@ def build_mcp_server():
         raise RuntimeError("Install the `mcp` package to run the RELAY MCP server") from exc
 
     server = FastMCP("relay-context")
+
+    # Primary tools (original names)
     server.tool(name="get_question_context")(get_question_context_tool)
     server.tool(name="get_account_context")(get_account_context_tool)
     server.tool(name="search_indexed_knowledge")(search_indexed_knowledge_tool)
     server.tool(name="search_slack_context")(search_slack_context_tool)
     server.tool(name="assemble_evidence_for_question")(assemble_evidence_for_question_tool)
+
+    # Required MCP spec tool names
+    server.tool(name="question_lookup")(question_lookup_tool)
+    server.tool(name="evidence_assembly")(evidence_assembly_tool)
+    server.tool(name="draft_generation")(draft_generation_tool)
+
     return server
 
 

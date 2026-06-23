@@ -57,6 +57,15 @@ if settings.sentry_dsn:
 api = FastAPI(title="RELAY", version="0.1.0")
 handler = AsyncSlackRequestHandler(bolt_app)
 
+# Mount MCP server at /mcp (SSE transport — compatible with claude mcp and MCP inspector)
+try:
+    from relay.context.mcp_server import build_mcp_server as _build_mcp_server
+
+    _mcp = _build_mcp_server()
+    api.mount("/mcp", _mcp.sse_app())
+except Exception:  # pragma: no cover — only fails if mcp package missing
+    logger.warning("MCP server not mounted: install the 'mcp' package")
+
 
 async def _check_db() -> str:
     try:
