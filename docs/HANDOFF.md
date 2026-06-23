@@ -84,6 +84,33 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 
 ## Agent Updates
 
+### Claude — 2026-06-22 (MCP load-bearing + architecture diagram)
+Branch: `claude/plan-10-mcp-rts` (PR #25 — pending merge)
+Status: All code complete, CI pending. Three completion goals in progress.
+
+Work completed:
+- Built on Codex's MCP+RTS foundation (`codex/mcp-rts-beta-foundation`), rebased worktree onto it
+- Added `draft_generation` MCP tool — self-contained: assembles evidence then calls generate_draft in a single RPC; `drafting_tasks.py` now routes through this tool, making MCP load-bearing (not decorative)
+- Added `question_lookup` and `evidence_assembly` as required tool name aliases alongside original names
+- Mounted MCP server at `/mcp` via SSE transport in FastAPI (`relay/api/main.py`); compatible with `claude mcp` and MCP inspector
+- Added internal/external source split in draft modal (`relay/slack/draft_modal.py`) — internal Slack sources (visibility="internal") shown under ":slack: Internal Slack context" header, not in customer-facing Citations section
+- Added Slack Search disconnect button+handler in `/relay settings` (`relay/commands/settings.py`, `relay/slack/settings_actions.py`)
+- Created `docs/architecture.md` — Mermaid flow diagram: Slack Connect channel → ingestion → classifier → question state machine → SLA poller → MCP server → Anthropic API → human approval → bot post
+- Added MCP startup documentation to README.md
+- Fixed 8 test quality issues from code review (revoke assertion args, mock pattern, fixture key access, *Sources:* string matching)
+- Manifest: added `/slack/search/oauth_redirect` to redirect URLs in template; beta-validation-checklist.md documents `configure-manifest.sh` command for operators
+- Updated beta-validation-checklist.md with pre-validation status (deployment ✅) and blocker documentation
+
+Test results: 305 passed, 34 skipped, 1 warning.
+
+**Goal 1 (MCP live + load-bearing):** Code complete, PR pending. Three required tools: `question_lookup`, `evidence_assembly`, `draft_generation`. Draft generation routes through MCP. Documented startup command in README.
+
+**Goal 2 (Beta validation):** Blocked on human action — Slack app settings need OAuth redirect URL updated (run `./scripts/configure-manifest.sh https://web-production-acd3.up.railway.app` then paste into api.slack.com/apps → App Manifest). Railway health is ✅. Steps 1-14 in checklist all depend on the Slack OAuth install completing first. See `docs/deployment/beta-validation-checklist.md` for full instructions.
+
+**Goal 3 (Architecture diagram):** Done. `docs/architecture.md` — Mermaid diagram with full flow including MCP as the interface layer.
+
+Next action (human): Update Slack app manifest via api.slack.com/apps to set Railway URLs, then walk the 14-step beta validation checklist.
+
 ### Codex — 2026-06-22 (MCP + Slack Real-Time Search foundation)
 Branch: `codex/mcp-rts-beta-foundation`
 Status: MCP + RTS foundation implemented locally; preparing incremental commits before beta validation resumes.
