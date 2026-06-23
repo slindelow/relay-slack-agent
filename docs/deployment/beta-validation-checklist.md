@@ -206,21 +206,16 @@ The Slack app manifest in `slack-app-manifest.yaml` previously had placeholder U
 
 **Required action (human — needs Slack app admin access):**
 
-1. Go to https://api.slack.com/apps
-2. Select the RELAY Beta app
-3. Click **OAuth & Permissions** in the left sidebar
-4. Under **Redirect URLs**, add:
-   - `https://web-production-acd3.up.railway.app/slack/oauth_redirect`
-   - `https://web-production-acd3.up.railway.app/slack/search/oauth_redirect`
-5. Click **Save URLs**
-6. Click **Slash Commands** in the left sidebar, update the command URL to:
-   - `https://web-production-acd3.up.railway.app/slack/events`
-7. Click **Event Subscriptions**, update the request URL to:
-   - `https://web-production-acd3.up.railway.app/slack/events`
-8. Click **Interactivity & Shortcuts**, update the request URL to:
-   - `https://web-production-acd3.up.railway.app/slack/events`
+1. Generate the deployment manifest:
+   ```bash
+   ./scripts/configure-manifest.sh https://web-production-acd3.up.railway.app
+   # Outputs: slack-app-manifest-generated.yaml
+   ```
 
-Alternatively, paste the updated `slack-app-manifest.yaml` directly into the app manifest editor at api.slack.com/apps → Your App → App Manifest.
+2. Go to https://api.slack.com/apps → select the RELAY Beta app → **App Manifest**
+3. Paste the contents of `slack-app-manifest-generated.yaml` and click **Save Changes**
+
+This updates all URLs in one step: slash command URL, OAuth redirect URLs (including `/slack/search/oauth_redirect`), and event subscription/interactivity request URLs.
 
 **Once the Slack app is updated**, resume from Step 1 of the checklist above using the Railway install URL:
 `https://web-production-acd3.up.railway.app/`
