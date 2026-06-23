@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy import select, text
 
+from relay.config import get_settings
 from relay.context.slack_rts import _sources_from_rts_response, revoke_user_search_tokens, slack_search_status, store_user_search_token
 from relay.crypto import decrypt_token
 from relay.db.models import User, UserSlackSearchToken
@@ -103,7 +104,7 @@ async def test_store_user_search_token_encrypts_and_replaces_active_token(db_ses
     assert decrypt_token(
         second.encrypted_access_token,
         second.encrypted_access_token_nonce,
-        relay_settings.token_encryption_key_bytes,
+        get_settings().token_encryption_key_bytes,
     ) == "xoxp-second"
 
     status = await slack_search_status(
