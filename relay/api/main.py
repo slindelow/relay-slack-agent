@@ -57,14 +57,18 @@ if settings.sentry_dsn:
 api = FastAPI(title="RELAY", version="0.1.0")
 handler = AsyncSlackRequestHandler(bolt_app)
 
+_mcp_mounted = False
+
 # Mount MCP server at /mcp (SSE transport — compatible with claude mcp and MCP inspector)
 try:
     from relay.context.mcp_server import build_mcp_server as _build_mcp_server
 
     _mcp = _build_mcp_server()
     api.mount("/mcp", _mcp.sse_app())
-except Exception:  # pragma: no cover — only fails if mcp package missing
-    logger.warning("MCP server not mounted: install the 'mcp' package")
+    _mcp_mounted = True
+    logger.info("MCP server mounted at /mcp")
+except Exception as _mcp_exc:  # pragma: no cover — only fails if mcp package missing
+    logger.error("MCP server not mounted: %s: %s", type(_mcp_exc).__name__, _mcp_exc, exc_info=True)
 
 
 async def _check_db() -> str:
@@ -94,10 +98,25 @@ async def _check_redis() -> str:
 
 @api.get("/health")
 async def health():
+    import subprocess
+
     db_status = await _check_db()
     redis_status = await _check_redis()
     status = "ok" if db_status == "ok" and redis_status == "ok" else "error"
-    body = {"status": status, "service": "relay", "db": db_status, "redis": redis_status}
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        git_sha = "unknown"
+    body = {
+        "status": status,
+        "service": "relay",
+        "db": db_status,
+        "redis": redis_status,
+        "git_sha": git_sha,
+        "mcp_mounted": _mcp_mounted,
+    }
     if status != "ok":
         return JSONResponse(body, status_code=503)
     return body

@@ -27,7 +27,13 @@ def test_health_endpoint(monkeypatch):
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "relay", "db": "ok", "redis": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "relay"
+    assert body["db"] == "ok"
+    assert body["redis"] == "ok"
+    assert "git_sha" in body
+    assert "mcp_mounted" in body
 
 
 def test_health_endpoint_returns_503_when_dependency_fails(monkeypatch):
