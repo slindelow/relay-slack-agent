@@ -32,3 +32,5 @@ Thumbs.db
 *.log
 
 slack-app-manifest-generated.yaml
+
+.worktrees/

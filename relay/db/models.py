@@ -180,6 +180,43 @@ class User(Base):
     workspace: Mapped[Workspace] = relationship(back_populates="users")
 
 
+class UserSlackSearchToken(Base):
+    """Per-user token used for permission-aware Slack Real-Time Search."""
+
+    __tablename__ = "user_slack_search_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    slack_user_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    encrypted_access_token: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    encrypted_access_token_nonce: Mapped[bytes] = mapped_column(LargeBinary(12), nullable=False)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "user_id"],
+            ["users.workspace_id", "users.id"],
+            ondelete="CASCADE",
+            name="fk_user_slack_search_token_user_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_user_slack_search_token_workspace_id"),
+        Index(
+            "uq_user_slack_search_token_active_user",
+            "workspace_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_revoked = false"),
+        ),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="users")
+    user: Mapped[User] = relationship(overlaps="workspace")
+
+
 class ClassificationFeedback(Base):
     __tablename__ = "classification_feedback"
 
@@ -718,6 +755,46 @@ class RetrievalLog(Base):
 
     workspace: Mapped[Workspace] = relationship(overlaps="draft,retrieval_logs")
     draft: Mapped["Draft | None"] = relationship(back_populates="retrieval_logs", overlaps="workspace")
+
+
+class ContextToolLog(Base):
+    """Audit trail for context tool calls used by the reasoning layer."""
+
+    __tablename__ = "context_tool_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor_slack_user_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tool_name: Mapped[str] = mapped_column(String(96), nullable=False)
+    query_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    question_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    draft_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "actor_user_id"],
+            ["users.workspace_id", "users.id"],
+            name="fk_context_tool_log_actor_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "question_id"],
+            ["questions.workspace_id", "questions.id"],
+            name="fk_context_tool_log_question_same_workspace",
+        ),
+        ForeignKeyConstraint(
+            ["workspace_id", "draft_id"],
+            ["drafts.workspace_id", "drafts.id"],
+            name="fk_context_tool_log_draft_same_workspace",
+        ),
+        UniqueConstraint("workspace_id", "id", name="uq_context_tool_log_workspace_id"),
+        Index("idx_context_tool_logs_workspace_created", "workspace_id", "created_at"),
+    )
+
+    workspace: Mapped[Workspace] = relationship(overlaps="context_tool_logs")
 
 
 # ---------------------------------------------------------------------------

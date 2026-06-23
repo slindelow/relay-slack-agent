@@ -33,6 +33,11 @@ else:
                 "im:write",
                 "users:read",
             ],
+            user_scopes=[
+                "search:read.public",
+                "search:read.files",
+                "search:read.users",
+            ],
         ),
     )
 

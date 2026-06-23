@@ -5,15 +5,17 @@ import logging
 import hmac
 import hashlib
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
 from uuid import UUID
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from sqlalchemy import select, text, update
+from sqlalchemy import delete, select, text, update
 
 from relay.config import get_settings
+from relay.context.slack_rts import store_user_search_token
 from relay.db.engine import get_engine
 from relay.db.models import (
     Assignment,
@@ -26,6 +28,7 @@ from relay.db.models import (
     QuestionEvent,
     Snooze,
     User,
+    UserSlackSearchToken,
     Workspace,
 )
 from relay.db.session import get_session
@@ -53,6 +56,15 @@ if settings.sentry_dsn:
 
 api = FastAPI(title="RELAY", version="0.1.0")
 handler = AsyncSlackRequestHandler(bolt_app)
+
+# Mount MCP server at /mcp (SSE transport — compatible with claude mcp and MCP inspector)
+try:
+    from relay.context.mcp_server import build_mcp_server as _build_mcp_server
+
+    _mcp = _build_mcp_server()
+    api.mount("/mcp", _mcp.sse_app())
+except Exception:  # pragma: no cover — only fails if mcp package missing
+    logger.warning("MCP server not mounted: install the 'mcp' package")
 
 
 async def _check_db() -> str:
@@ -219,6 +231,120 @@ async def slack_oauth_redirect(req: Request):
     return await handler.handle(req)
 
 
+@api.get("/slack/search/install")
+async def slack_search_install(
+    team_id: str = "",
+    user_id: str = "",
+):
+    """Start user-token OAuth for permission-aware Slack Real-Time Search."""
+    if not team_id or not user_id:
+        return JSONResponse(
+            {"error": "Open this link from /relay settings so RELAY can bind consent to your workspace user."},
+            status_code=400,
+        )
+    settings = get_settings()
+    state = build_slack_search_state(team_id, user_id, settings.token_encryption_key_bytes)
+    redirect_uri = f"{settings.app_base_url.rstrip('/')}/slack/search/oauth_redirect"
+    params = {
+        "client_id": settings.slack_client_id,
+        "user_scope": settings.slack_search_user_scopes,
+        "redirect_uri": redirect_uri,
+        "state": state,
+    }
+    return RedirectResponse(
+        url=f"https://slack.com/oauth/v2/authorize?{urlencode(params)}",
+        status_code=302,
+    )
+
+
+@api.get("/slack/search/oauth_redirect")
+async def slack_search_oauth_redirect(
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
+    """Receive Slack user-token OAuth redirect and store encrypted RTS token."""
+    if error:
+        return JSONResponse({"error": error}, status_code=400)
+    settings = get_settings()
+    parsed_state = _parse_slack_search_state(state, settings.token_encryption_key_bytes)
+    if parsed_state is None:
+        return JSONResponse({"error": "invalid state"}, status_code=400)
+    expected_team_id, expected_user_id = parsed_state
+    if not code:
+        return JSONResponse({"error": "missing code"}, status_code=400)
+
+    redirect_uri = f"{settings.app_base_url.rstrip('/')}/slack/search/oauth_redirect"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(
+                "https://slack.com/api/oauth.v2.access",
+                data={
+                    "client_id": settings.slack_client_id,
+                    "client_secret": settings.slack_client_secret,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                },
+            )
+        response.raise_for_status()
+    except Exception:
+        logger.exception("slack_search_oauth_exchange_failed")
+        return JSONResponse({"error": "slack oauth exchange failed"}, status_code=503)
+
+    data = response.json()
+    if not data.get("ok"):
+        return JSONResponse({"error": data.get("error", "oauth_failed")}, status_code=400)
+
+    team = data.get("team") or {}
+    authed_user = data.get("authed_user") or {}
+    returned_team_id = team.get("id") or data.get("team_id")
+    returned_user_id = authed_user.get("id")
+    access_token = authed_user.get("access_token")
+    scopes = authed_user.get("scope") or data.get("scope") or ""
+    if returned_team_id != expected_team_id or returned_user_id != expected_user_id:
+        return JSONResponse({"error": "oauth user/workspace mismatch"}, status_code=403)
+    if not access_token:
+        return JSONResponse({"error": "missing user access token"}, status_code=400)
+
+    async with get_session() as session:
+        workspace_result = await session.execute(
+            select(Workspace).where(
+                Workspace.slack_team_id == expected_team_id,
+                Workspace.deleted_at.is_(None),
+            )
+        )
+        workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        return JSONResponse({"error": "workspace not installed"}, status_code=404)
+
+    async with get_session(workspace.id) as session:
+        await store_user_search_token(
+            session,
+            workspace_id=workspace.id,
+            slack_user_id=expected_user_id,
+            access_token=access_token,
+            scopes=scopes,
+        )
+        session.add(
+            AuditLog(
+                workspace_id=workspace.id,
+                actor_slack_user_id=expected_user_id,
+                event_type="slack_search_connected",
+                entity_type="user",
+                new_value={"scopes": scopes},
+            )
+        )
+
+    return _html_page(
+        "Slack Search Connected",
+        """
+<h1>Slack Search Context Enabled</h1>
+<p>RELAY can now use permission-aware internal Slack search when drafting responses and answering <code>/relay ask</code> for your user.</p>
+<p>You can close this window and return to Slack.</p>
+""",
+    )
+
+
 async def _slack_auth_test(token: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -266,6 +392,45 @@ def build_confirmation_token(
     message = f"{workspace_id}:{slack_user_id}:{token_issued_at}".encode()
     signature = hmac.new(signing_key, message, hashlib.sha256).hexdigest()
     return f"{token_issued_at}.{signature}"
+
+
+def build_slack_search_state(
+    slack_team_id: str,
+    slack_user_id: str,
+    signing_key: bytes,
+    *,
+    issued_at: int | None = None,
+) -> str:
+    token_issued_at = issued_at if issued_at is not None else int(datetime.now(UTC).timestamp())
+    message = f"{slack_team_id}:{slack_user_id}:{token_issued_at}".encode()
+    signature = hmac.new(signing_key, message, hashlib.sha256).hexdigest()
+    return f"{slack_team_id}.{slack_user_id}.{token_issued_at}.{signature}"
+
+
+def _parse_slack_search_state(
+    state: str,
+    signing_key: bytes,
+    *,
+    max_age_seconds: int = 900,
+) -> tuple[str, str] | None:
+    try:
+        slack_team_id, slack_user_id, issued_at_str, _signature = state.split(".", 3)
+        issued_at = int(issued_at_str)
+    except (ValueError, AttributeError):
+        return None
+
+    now = int(datetime.now(UTC).timestamp())
+    if issued_at > now + 60 or now - issued_at > max_age_seconds:
+        return None
+    expected = build_slack_search_state(
+        slack_team_id,
+        slack_user_id,
+        signing_key,
+        issued_at=issued_at,
+    )
+    if not hmac.compare_digest(expected, state):
+        return None
+    return slack_team_id, slack_user_id
 
 
 def _verify_confirmation_token(
@@ -445,6 +610,12 @@ async def erase_user(
         user.display_name = None
         user.email = None
         user.deleted_at = datetime.now(UTC)
+        await session.execute(
+            delete(UserSlackSearchToken).where(
+                UserSlackSearchToken.workspace_id == workspace.id,
+                UserSlackSearchToken.user_id == user.id,
+            )
+        )
 
         await session.execute(
             update(AuditLog)

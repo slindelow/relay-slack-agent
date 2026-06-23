@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from relay.commands.ask import _escape_mrkdwn, _format_result_blocks, _parse_ask_query, handle_ask
-from relay.connectors.retrieval import RetrievedChunk
+from relay.context.contracts import ContextSource
+from relay.context.slack_rts import SlackSearchStatus
 
 
 class _SessionContext:
@@ -32,14 +33,12 @@ def test_parse_ask_query_word_boundary():
 
 
 def test_format_result_blocks_includes_source_metadata():
-    chunk = RetrievedChunk(
-        chunk_id=uuid.uuid4(),
-        source_document_id=uuid.uuid4(),
-        knowledge_entry_id=None,
-        content="Enable SSO under Settings > Security.",
-        embedding_model="voyage-3",
-        embedding_dims=1536,
-        citation={"title": "SSO docs", "provider": "google_drive", "url": "https://example.com", "stale": False},
+    chunk = ContextSource(
+        title="SSO docs",
+        provider="google_drive",
+        url="https://example.com",
+        excerpt="Enable SSO under Settings > Security.",
+        stale=False,
     )
 
     blocks = _format_result_blocks([chunk])
@@ -57,14 +56,12 @@ def test_escape_mrkdwn():
 
 
 def test_format_result_blocks_escapes_title_and_excerpt():
-    chunk = RetrievedChunk(
-        chunk_id=uuid.uuid4(),
-        source_document_id=uuid.uuid4(),
-        knowledge_entry_id=None,
-        content="Use <b>bold</b> & proper markup.",
-        embedding_model="voyage-3",
-        embedding_dims=1536,
-        citation={"title": "Docs & Guide", "provider": "confluence", "url": "https://example.com", "stale": False},
+    chunk = ContextSource(
+        title="Docs & Guide",
+        provider="confluence",
+        url="https://example.com",
+        excerpt="Use <b>bold</b> & proper markup.",
+        stale=False,
     )
 
     blocks = _format_result_blocks([chunk])
@@ -77,14 +74,12 @@ def test_format_result_blocks_escapes_title_and_excerpt():
 
 
 def test_format_result_blocks_non_https_url_falls_back_to_text():
-    chunk = RetrievedChunk(
-        chunk_id=uuid.uuid4(),
-        source_document_id=uuid.uuid4(),
-        knowledge_entry_id=None,
-        content="Some content.",
-        embedding_model="voyage-3",
-        embedding_dims=1536,
-        citation={"title": "Risky Doc", "provider": "confluence", "url": "javascript:alert(1)", "stale": False},
+    chunk = ContextSource(
+        title="Risky Doc",
+        provider="confluence",
+        url="javascript:alert(1)",
+        excerpt="Some content.",
+        stale=False,
     )
 
     blocks = _format_result_blocks([chunk])
@@ -124,13 +119,15 @@ async def test_handle_ask_zero_results():
             "relay.commands.ask.get_session",
             side_effect=[_SessionContext(unscoped_session), _SessionContext(scoped_session)],
         ),
-        patch("relay.commands.ask.retrieve", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.slack_search_status", new=AsyncMock(return_value=SlackSearchStatus(False))),
+        patch("relay.commands.ask.search_indexed_knowledge", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.search_slack_context", new=AsyncMock(return_value=[])),
     ):
-        await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123"})
+        await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123", "user_id": "U123"})
 
     respond.assert_awaited_once_with(
         response_type="ephemeral",
-        text="No relevant sources found in connected knowledge base.",
+        text="No relevant sources found in connected knowledge base. Connect Slack Search in `/relay settings` to include internal Slack context.",
     )
 
 
@@ -142,14 +139,12 @@ async def test_handle_ask_returns_formatted_blocks():
     workspace_result.scalar_one_or_none.return_value = SimpleNamespace(id=workspace_id)
     unscoped_session.execute.return_value = workspace_result
     scoped_session = AsyncMock()
-    chunk = RetrievedChunk(
-        chunk_id=uuid.uuid4(),
-        source_document_id=None,
-        knowledge_entry_id=uuid.uuid4(),
-        content="Use the approved Acme SSO answer.",
-        embedding_model="voyage-3",
-        embedding_dims=1536,
-        citation={"title": "Acme - SSO", "provider": "relay_memory", "stale": False},
+    chunk = ContextSource(
+        title="Acme - SSO",
+        provider="relay_memory",
+        url=None,
+        excerpt="Use the approved Acme SSO answer.",
+        stale=False,
     )
 
     ack = AsyncMock()
@@ -160,11 +155,19 @@ async def test_handle_ask_returns_formatted_blocks():
             "relay.commands.ask.get_session",
             side_effect=[_SessionContext(unscoped_session), _SessionContext(scoped_session)],
         ),
-        patch("relay.commands.ask.retrieve", new=AsyncMock(return_value=[chunk])) as mock_retrieve,
+        patch("relay.commands.ask.slack_search_status", new=AsyncMock(return_value=SlackSearchStatus(True))),
+        patch("relay.commands.ask.search_indexed_knowledge", new=AsyncMock(return_value=[chunk])) as mock_search,
+        patch("relay.commands.ask.search_slack_context", new=AsyncMock(return_value=[])),
     ):
-        await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123"})
+        await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123", "user_id": "U123"})
 
-    mock_retrieve.assert_awaited_once_with(workspace_id, "SSO docs", scoped_session, top_k=5)
+    mock_search.assert_awaited_once_with(
+        workspace_id,
+        "SSO docs",
+        scoped_session,
+        top_k=5,
+        actor_slack_user_id="U123",
+    )
     kwargs = respond.await_args.kwargs
     assert kwargs["response_type"] == "ephemeral"
     assert "blocks" in kwargs

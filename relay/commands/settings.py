@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import func, select
 
 from relay.config import get_settings
+from relay.context.slack_rts import revoke_user_search_tokens, slack_search_status
 from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
 from relay.db.models import CrmConnection, MonitoredChannel, SourceConnector, User, Workspace
 from relay.db.session import get_session
@@ -27,7 +28,10 @@ class SettingsStatus:
     channel_count: int = 0
     crm_connected: bool = False
     source_count: int = 0
+    slack_search_connected: bool = False
     app_base_url: str = ""
+    slack_team_id: str = ""
+    slack_user_id: str = ""
     connector_rows: list[Any] = field(default_factory=list)
 
 
@@ -42,6 +46,7 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     channel_line = f"{_mark(status.channel_count > 0)} Customer Slack Connect channel registered"
     crm_line = f"{_mark(status.crm_connected)} HubSpot connected"
     source_line = f"{_mark(status.source_count > 0)} Knowledge source connected"
+    slack_search_line = f"{_mark(status.slack_search_connected)} Slack Search context enabled"
 
     help_text = (
         "*Private beta setup*\n"
@@ -49,8 +54,10 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
         f"{admin_line}\n"
         f"{channel_line}\n"
         f"{crm_line}\n"
-        f"{source_line}"
+        f"{source_line}\n"
+        f"{slack_search_line}"
     )
+    search_connect_url = _slack_search_connect_url(status)
 
     actions = [
         {
@@ -70,6 +77,22 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "action_id": "relay_setup_google_drive_connector",
             "value": "google_drive",
         },
+        {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Enable Slack Search"},
+            "url": search_connect_url,
+        },
+        *(
+            [{
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Disconnect Slack Search"},
+                "action_id": "relay_disconnect_slack_search",
+                "value": "disconnect",
+                "style": "danger",
+            }]
+            if status.slack_search_connected
+            else []
+        ),
         {
             "type": "button",
             "text": {"type": "plain_text", "text": "Open install page"},
@@ -106,6 +129,16 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     if status.connector_rows:
         blocks.extend(_connector_status_blocks(status.connector_rows))
     return blocks
+
+
+def _slack_search_connect_url(status: SettingsStatus) -> str:
+    base = status.app_base_url.rstrip("/") or "https://relay.example.com"
+    if not (status.slack_team_id and status.slack_user_id):
+        return f"{base}/slack/search/install"
+    return (
+        f"{base}/slack/search/install"
+        f"?team_id={status.slack_team_id}&user_id={status.slack_user_id}"
+    )
 
 
 def _connector_status_blocks(connector_rows: list[Any]) -> list[dict]:
@@ -207,6 +240,11 @@ async def handle_settings(ack, respond, command) -> None:
                 .order_by(SourceConnector.connector_type.asc())
             )
             connector_rows = list(connector_result.scalars())
+            search_status = await slack_search_status(
+                session,
+                workspace_id=workspace.id,
+                slack_user_id=slack_user_id,
+            )
 
         status = SettingsStatus(
             installed=True,
@@ -215,7 +253,10 @@ async def handle_settings(ack, respond, command) -> None:
             channel_count=channel_count,
             crm_connected=crm_count > 0,
             source_count=source_count,
+            slack_search_connected=search_status.connected,
             app_base_url=get_settings().app_base_url,
+            slack_team_id=slack_team_id,
+            slack_user_id=slack_user_id,
             connector_rows=connector_rows,
         )
     except Exception as exc:
@@ -475,6 +516,32 @@ async def handle_save_github_connector(ack, body):
             credentials=token.strip(),
             config={"repo_list": repos, "markdown_paths": markdown_paths},
         )
+
+
+async def handle_disconnect_slack_search(ack, body, respond) -> None:
+    """Revoke the requesting user's Slack search token."""
+    await ack()
+    slack_team_id = (body.get("team") or {}).get("id") or body.get("team_id", "")
+    slack_user_id = (body.get("user") or {}).get("id") or body.get("user_id", "")
+    if not slack_team_id or not slack_user_id:
+        await respond(response_type="ephemeral", text="Unable to disconnect: missing workspace or user.")
+        return
+    try:
+        async with get_session() as session:
+            workspace_result = await session.execute(
+                select(Workspace).where(Workspace.slack_team_id == slack_team_id)
+            )
+            workspace = workspace_result.scalar_one_or_none()
+        if workspace is None:
+            await respond(response_type="ephemeral", text="Workspace not found.")
+            return
+        async with get_session(workspace_id=workspace.id) as session:
+            await revoke_user_search_tokens(session, workspace_id=workspace.id, slack_user_id=slack_user_id)
+    except Exception:
+        logger.exception("disconnect_slack_search_failed team=%s user=%s", slack_team_id, slack_user_id)
+        await respond(response_type="ephemeral", text="Failed to disconnect Slack Search. Please try again.")
+        return
+    await respond(response_type="ephemeral", text=":white_check_mark: Slack Search context disconnected.")
 
 
 async def handle_save_google_drive_connector(ack, body):

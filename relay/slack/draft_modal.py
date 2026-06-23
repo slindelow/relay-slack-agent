@@ -97,18 +97,41 @@ def build_draft_modal(
         },
     })
 
-    # Source citations
+    # Internal Slack sources (shown after editable response body)
     sources = bundle.get("sources", [])
-    if sources:
+    internal_sources = [s for s in sources if s.get("visibility") == "internal"]
+    external_sources = [s for s in sources if s.get("visibility") != "internal"]
+
+    if internal_sources:
+        blocks.append({"type": "divider"})
+        internal_lines = [":slack: *Internal Slack context* (not included in customer response)"]
+        for i, src in enumerate(internal_sources[:10], 1):
+            url = src.get("url")
+            link = f"<{url}|{src.get('title', 'Source')}>" if url else src.get("title", "Source")
+            excerpt = src.get('excerpt', '')
+            truncated = excerpt[:150] + ('…' if len(excerpt) > 150 else '')
+            internal_lines.append(
+                f"{i}. {link} [{src.get('provider', '')}]\n"
+                f"   _{truncated}_"
+            )
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "\n".join(internal_lines)},
+        })
+
+    # External/indexed source citations
+    if external_sources:
         blocks.append({"type": "divider"})
         citation_lines = ["*Sources:*"]
-        for i, src in enumerate(sources[:10], 1):
+        for i, src in enumerate(external_sources[:10], 1):
             stale_flag = " :warning: stale" if src.get("stale") else ""
             url = src.get("url")
             link = f"<{url}|{src.get('title', 'Source')}>" if url else src.get("title", "Source")
+            excerpt = src.get('excerpt', '')
+            truncated = excerpt[:150] + ('…' if len(excerpt) > 150 else '')
             citation_lines.append(
                 f"{i}. {link} [{src.get('provider', '')}]{stale_flag}\n"
-                f"   _{src.get('excerpt', '')[:150]}…_"
+                f"   _{truncated}_"
             )
         blocks.append({
             "type": "section",

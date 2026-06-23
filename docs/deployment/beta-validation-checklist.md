@@ -170,19 +170,52 @@ Document the threshold decision in `docs/HANDOFF.md` with the evaluation date an
 
 ## Sign-off
 
-| Step | Pass | Tested By | Date |
-|------|------|-----------|------|
-| 1 — Install | | | |
-| 2 — App Home 1/4 | | | |
-| 3 — Channel registered | | | |
-| 4 — HubSpot connected | | | |
-| 5 — Knowledge source | | | |
-| 6 — Setup complete | | | |
-| 7 — Question classified | | | |
-| 8 — SLA timer | | | |
-| 9 — Claim and draft | | | |
-| 10 — Send response | | | |
-| 11 — Knowledge search | | | |
-| 12 — Account pulse | | | |
-| 13 — Workspace deletion | | | |
-| 14 — Uninstall | | | |
+| Step | Pass | Tested By | Date | Notes |
+|------|------|-----------|------|-------|
+| 1 — Install | ⏳ BLOCKED | — | — | Requires OAuth redirect URL added to Slack app settings (see below) |
+| 2 — App Home 1/4 | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 3 — Channel registered | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 4 — HubSpot connected | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 5 — Knowledge source | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 6 — Setup complete | ⏳ BLOCKED | — | — | Depends on steps 1-5 |
+| 7 — Question classified | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 8 — SLA timer | ⏳ BLOCKED | — | — | Depends on step 7 |
+| 9 — Claim and draft | ⏳ BLOCKED | — | — | Depends on step 7 |
+| 10 — Send response | ⏳ BLOCKED | — | — | Depends on step 9 |
+| 11 — Knowledge search | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 12 — Account pulse | ⏳ BLOCKED | — | — | Depends on steps 1 + 4 |
+| 13 — Workspace deletion | ⏳ BLOCKED | — | — | Depends on step 1 |
+| 14 — Uninstall | ⏳ BLOCKED | — | — | Depends on step 1 |
+
+---
+
+## Pre-validation Status (as of 2026-06-22)
+
+### ✅ Deployment Live
+
+```
+curl https://web-production-acd3.up.railway.app/health
+→ {"status":"ok","service":"relay","db":"ok","redis":"ok"}
+```
+
+FastAPI web service, PostgreSQL (pgvector), and Redis are all healthy.
+
+### ❌ BLOCKER: OAuth Redirect URL Not Registered
+
+The Slack app manifest in `slack-app-manifest.yaml` previously had placeholder URLs (`relay-beta.example.com`). The manifest has been updated to the correct Railway URLs, but the **Slack app settings at api.slack.com/apps must be updated manually**:
+
+**Required action (human — needs Slack app admin access):**
+
+1. Generate the deployment manifest:
+   ```bash
+   ./scripts/configure-manifest.sh https://web-production-acd3.up.railway.app
+   # Outputs: slack-app-manifest-generated.yaml
+   ```
+
+2. Go to https://api.slack.com/apps → select the RELAY Beta app → **App Manifest**
+3. Paste the contents of `slack-app-manifest-generated.yaml` and click **Save Changes**
+
+This updates all URLs in one step: slash command URL, OAuth redirect URLs (including `/slack/search/oauth_redirect`), and event subscription/interactivity request URLs.
+
+**Once the Slack app is updated**, resume from Step 1 of the checklist above using the Railway install URL:
+`https://web-production-acd3.up.railway.app/`

@@ -84,6 +84,70 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 
 ## Agent Updates
 
+### Claude — 2026-06-22 (MCP load-bearing + architecture diagram)
+Branch: `claude/plan-10-mcp-rts` (PR #25 — pending merge)
+Status: All code complete, CI pending. Three completion goals in progress.
+
+Work completed:
+- Built on Codex's MCP+RTS foundation (`codex/mcp-rts-beta-foundation`), rebased worktree onto it
+- Added `draft_generation` MCP tool — self-contained: assembles evidence then calls generate_draft in a single RPC; `drafting_tasks.py` now routes through this tool, making MCP load-bearing (not decorative)
+- Added `question_lookup` and `evidence_assembly` as required tool name aliases alongside original names
+- Mounted MCP server at `/mcp` via SSE transport in FastAPI (`relay/api/main.py`); compatible with `claude mcp` and MCP inspector
+- Added internal/external source split in draft modal (`relay/slack/draft_modal.py`) — internal Slack sources (visibility="internal") shown under ":slack: Internal Slack context" header, not in customer-facing Citations section
+- Added Slack Search disconnect button+handler in `/relay settings` (`relay/commands/settings.py`, `relay/slack/settings_actions.py`)
+- Created `docs/architecture.md` — Mermaid flow diagram: Slack Connect channel → ingestion → classifier → question state machine → SLA poller → MCP server → Anthropic API → human approval → bot post
+- Added MCP startup documentation to README.md
+- Fixed 8 test quality issues from code review (revoke assertion args, mock pattern, fixture key access, *Sources:* string matching)
+- Manifest: added `/slack/search/oauth_redirect` to redirect URLs in template; beta-validation-checklist.md documents `configure-manifest.sh` command for operators
+- Updated beta-validation-checklist.md with pre-validation status (deployment ✅) and blocker documentation
+
+Test results: 305 passed, 34 skipped, 1 warning.
+
+**Goal 1 (MCP live + load-bearing):** Code complete, PR pending. Three required tools: `question_lookup`, `evidence_assembly`, `draft_generation`. Draft generation routes through MCP. Documented startup command in README.
+
+**Goal 2 (Beta validation):** Blocked on human action — Slack app settings need OAuth redirect URL updated (run `./scripts/configure-manifest.sh https://web-production-acd3.up.railway.app` then paste into api.slack.com/apps → App Manifest). Railway health is ✅. Steps 1-14 in checklist all depend on the Slack OAuth install completing first. See `docs/deployment/beta-validation-checklist.md` for full instructions.
+
+**Goal 3 (Architecture diagram):** Done. `docs/architecture.md` — Mermaid diagram with full flow including MCP as the interface layer.
+
+Next action (human): Update Slack app manifest via api.slack.com/apps to set Railway URLs, then walk the 14-step beta validation checklist.
+
+### Codex — 2026-06-22 (MCP + Slack Real-Time Search foundation)
+Branch: `codex/mcp-rts-beta-foundation`
+Status: MCP + RTS foundation implemented locally; preparing incremental commits before beta validation resumes.
+
+Work completed:
+- Added governed context contracts/service under `relay/context/`.
+- Added MCP facade exposing RELAY context tools: question context, account context, indexed knowledge search, Slack RTS search, and evidence assembly.
+- Added Slack Real-Time Search user-token consent flow via `/slack/search/install` and `/slack/search/oauth_redirect`.
+- Added per-user encrypted Slack search tokens and context tool audit logs in migration `0010_mcp_rts_context.py`.
+- Routed `/relay ask` and draft evidence assembly through the context boundary.
+- Kept Slack RTS to internal public-channel search for v1; registered Slack Connect channels are excluded when Slack result channel IDs are available.
+- Updated Slack manifest/user scopes and Marketplace scope justification for `search:read.public`, `search:read.files`, and `search:read.users`.
+
+Validation:
+- `uv run pytest -q` — 299 passed, 32 skipped, 1 warning.
+- `uv run python -m compileall -q relay tests` — passed.
+- `git diff --check` — passed.
+
+Coordination notes for Claude:
+- Please treat Railway as the first real beta integration environment; local Docker/Postgres/Redis remains useful for repeatable smoke tests, but real Slack OAuth/RTS/Connect behavior needs the deployed Railway app.
+- Before live validation, Slack app redirect URLs must include `/slack/search/oauth_redirect` in addition to existing app OAuth redirects.
+- Railway variables now need `SLACK_SEARCH_USER_SCOPES` only if overriding the default `search:read.public,search:read.files,search:read.users`.
+- Next Codex task on this branch: implement Redis idempotency for Slack Events API ingestion.
+
+### Claude — 2026-06-10 (Channel registration + worker fixes)
+Branch: `main` (committed directly to main — operational fixes)
+Status: Two bugs surfaced during beta validation attempt, both fixed and merged.
+
+Work completed:
+- `fix(worker)`: corrected Procfile module path, capped Celery concurrency, enabled beat scheduler (`ae9e6dd`, `dd94744`)
+- `fix(register)`: channel registration was rejecting Slack Connect channels on free-plan workspaces because `is_ext_shared` is not set for guest-shared channels. Fixed `_fetch_channel_metadata()` in `relay/commands/register.py` to accept any channel where `is_shared=True` or an external team appears in `shared_team_ids` — covers all external sharing variants (`eae4772`)
+- `debug(register)`: added `logger.info` in `_fetch_channel_metadata()` to log channel metadata (is_ext_shared, is_shared, shared_team_ids, customer_team_id) to Railway logs for ongoing beta diagnostics (`68001f1`)
+
+**Note:** The debug logging commit is intentionally left in — it emits at INFO level and helps diagnose registration issues during beta. Remove after beta validates step 3 of the checklist.
+
+Next action: resume beta validation from step 1 (add OAuth redirect URL to Slack app).
+
 ### Codex — 2026-06-09 (Railway beta pivot)
 Branch: `codex/plan-9-railway-beta-alignment`
 Status: Railway is now the immediate private-beta deployment path; AWS is no longer the active beta blocker.

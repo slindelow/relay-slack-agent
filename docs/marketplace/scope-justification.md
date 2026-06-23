@@ -30,6 +30,18 @@ RELAY resolves Slack user IDs into display names for alert cards, ownership assi
 
 RELAY registers `/relay` slash commands for channel registration, ad-hoc knowledge lookup, account pulse summaries, and administrative workflows.
 
+## User scope: `search:read.public`
+
+RELAY uses Slack Real-Time Search to retrieve relevant internal public-channel context on behalf of the CSM who explicitly enables Slack Search Context. Search results are used as internal evidence for drafts and `/relay ask`; RELAY does not continuously ingest or store public-channel history.
+
+## User scope: `search:read.files`
+
+RELAY includes Slack files in permission-aware Real-Time Search results so CSMs can find recent internal handoffs, snippets, and shared files relevant to customer questions. File search results are cited in internal review surfaces and are not copied into customer replies by default.
+
+## User scope: `search:read.users`
+
+RELAY allows Slack Real-Time Search to resolve user-related context returned by Slack search, such as author or owner information on relevant internal messages. RELAY does not use this scope to build a directory export.
+
 ## Optional Connector Scopes
 
 Google Drive, GitHub, CRM, and future connector scopes are optional and are requested only when a workspace admin configures that connector. Connector content is scoped to the configured source and can be disconnected and purged independently.

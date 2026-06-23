@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     slack_client_secret: str
     slack_signing_secret: str
     slack_bot_token: str = ""
+    slack_search_user_scopes: str = "search:read.public,search:read.files,search:read.users"
 
     database_url: str
     test_database_url: str = "postgresql+asyncpg://relay:relay@localhost:5432/relay_test"

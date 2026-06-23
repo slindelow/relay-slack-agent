@@ -69,11 +69,14 @@ async def _generate_draft_async(workspace_id: uuid.UUID, question_id: uuid.UUID)
             if user:
                 csm_slack_user_id = user.slack_user_id
 
-    # Generate draft
     try:
-        async with get_session(workspace_id) as session:
-            bundle = await assemble_evidence(workspace_id, question_id, session)
-            await generate_draft(workspace_id, question_id, bundle, session)
+        from relay.context.mcp_server import draft_generation_tool
+
+        await draft_generation_tool(
+            str(workspace_id),
+            str(question_id),
+            acting_slack_user_id=csm_slack_user_id,
+        )
 
         if csm_slack_user_id:
             await _notify_csm(csm_slack_user_id, "Draft ready — click *Review draft* to approve.")

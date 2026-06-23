@@ -19,6 +19,7 @@ features:
 oauth_config:
   redirect_urls:
     - https://relay-beta.example.com/slack/oauth_redirect
+    - https://relay-beta.example.com/slack/search/oauth_redirect
   scopes:
     bot:
       - app_mentions:read
@@ -29,6 +30,10 @@ oauth_config:
       - groups:read
       - im:write
       - users:read
+    user:
+      - search:read.public
+      - search:read.files
+      - search:read.users
 settings:
   event_subscriptions:
     request_url: https://relay-beta.example.com/slack/events
