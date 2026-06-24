@@ -131,6 +131,35 @@ def _draft_queue_blocks(questions_needing_draft: list[Any]) -> list[dict]:
     return blocks
 
 
+def _drafts_ready_blocks(pending_drafts: list[Any]) -> list[dict]:
+    """Build blocks for generated drafts awaiting CSM review.
+
+    Each item is a mapping with ``draft_id`` and ``excerpt``. The button carries
+    the draft id so ``relay_open_draft_modal`` can open the review modal.
+    """
+    if not pending_drafts:
+        return []
+
+    blocks: list[dict] = [
+        {"type": "divider"},
+        {"type": "header", "text": {"type": "plain_text", "text": "Drafts Ready for Review"}},
+    ]
+    for d in pending_drafts:
+        excerpt = (d.get("excerpt") or "")[:120]
+        blocks.append({
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f":memo: _{excerpt}…_"},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Review draft"},
+                "style": "primary",
+                "action_id": "relay_open_draft_modal",
+                "value": str(d.get("draft_id")),
+            },
+        })
+    return blocks
+
+
 def _format_duration(seconds: int | None) -> str:
     if seconds is None:
         return "n/a"
@@ -272,6 +301,7 @@ def build_home(
     total_questions_7d: int = 0,
     feedback_export_url: str = "",
     setup_state: SetupState | None = None,
+    pending_drafts: list[Any] | None = None,
 ) -> list[dict]:
     """Return the full App Home block list."""
     base_blocks: list[dict] = [
@@ -290,6 +320,7 @@ def build_home(
         base_blocks
         + checklist
         + _connector_blocks(connector_rows)
+        + _drafts_ready_blocks(pending_drafts or [])
         + _draft_queue_blocks(questions_needing_draft or [])
         + _impact_blocks(impact_rows or [])
         + _accuracy_blocks(feedback_rows or [], total_questions_7d, feedback_export_url)
@@ -302,6 +333,7 @@ async def publish_app_home(event, client, body):
 
     connector_rows: list[Any] = []
     questions_needing_draft: list[Any] = []
+    pending_drafts: list[Any] = []
     impact_rows: list[Any] = []
     feedback_rows: list[Any] = []
     total_questions_7d = 0
@@ -375,6 +407,22 @@ async def publish_app_home(event, client, body):
                     )
                     questions_needing_draft = list(q_result.scalars())
 
+                    # Generated drafts awaiting review (surfaced with a Review button)
+                    draft_result = await session.execute(
+                        select(Draft.id, Question.title_excerpt)
+                        .join(Question, Draft.question_id == Question.id)
+                        .where(
+                            Draft.workspace_id == workspace.id,
+                            Draft.status == "pending",
+                        )
+                        .order_by(Draft.created_at.desc())
+                        .limit(10)
+                    )
+                    pending_drafts = [
+                        {"draft_id": str(did), "excerpt": excerpt or ""}
+                        for did, excerpt in draft_result.all()
+                    ]
+
                     impact_result = await session.execute(
                         select(ImpactMetric)
                         .where(
@@ -418,6 +466,7 @@ async def publish_app_home(event, client, body):
         total_questions_7d,
         feedback_export_url,
         setup_state=setup_state,
+        pending_drafts=pending_drafts,
     )
     await client.views_publish(
         user_id=event["user"],

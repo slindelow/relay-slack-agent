@@ -93,6 +93,29 @@ def test_connected_sources_header_present():
     assert any("Connected Sources" in h for h in headers)
 
 
+def test_build_home_drafts_ready_section_renders_review_button():
+    draft_id = str(uuid.uuid4())
+    blocks = build_home(
+        [],
+        pending_drafts=[{"draft_id": draft_id, "excerpt": "When does our contract renew?"}],
+    )
+    headers = [b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "header"]
+    assert any("Drafts Ready for Review" in h for h in headers)
+    review_buttons = [
+        b["accessory"]
+        for b in blocks
+        if b.get("accessory", {}).get("action_id") == "relay_open_draft_modal"
+    ]
+    assert len(review_buttons) == 1
+    assert review_buttons[0]["value"] == draft_id
+
+
+def test_build_home_no_drafts_ready_section_when_empty():
+    blocks = build_home([], pending_drafts=[])
+    headers = [b.get("text", {}).get("text", "") for b in blocks if b.get("type") == "header"]
+    assert not any("Drafts Ready for Review" in h for h in headers)
+
+
 def _make_impact(sla_met, draft_accepted, time_to_send_seconds):
     row = MagicMock()
     row.sla_met = sla_met
