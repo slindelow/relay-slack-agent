@@ -650,7 +650,7 @@ class KnowledgeChunk(Base):
     knowledge_entry_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
     embedding_model: Mapped[str] = mapped_column(String(64), nullable=False)
     embedding_dims: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -670,7 +670,7 @@ class KnowledgeChunk(Base):
         ),
         UniqueConstraint("workspace_id", "id", name="uq_knowledge_chunk_workspace_id"),
         UniqueConstraint("workspace_id", "content_hash", name="uq_knowledge_chunk_content_hash"),
-        CheckConstraint("embedding_dims = 1536", name="ck_knowledge_chunks_embedding_dims"),
+        CheckConstraint("embedding_dims = 1024", name="ck_knowledge_chunks_embedding_dims"),
         Index("idx_knowledge_chunks_workspace_source", "workspace_id", "source_document_id"),
     )
 

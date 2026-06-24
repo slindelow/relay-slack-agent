@@ -32,7 +32,7 @@ def _make_session(existing_hashes: list[str] | None = None):
     return session
 
 
-FAKE_VECTOR = [0.1] * 1536
+FAKE_VECTOR = [0.1] * 1024
 
 
 @pytest.mark.asyncio

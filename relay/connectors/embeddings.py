@@ -65,7 +65,6 @@ async def embed_chunks(
     settings = get_settings()
     provider = settings.embedding_provider.lower()
     embedding_model = "voyage-3" if provider != "openai" else "text-embedding-3-small"
-    embedding_dims = 1536
 
     # Compute hashes and determine which need embedding
     hashes = [hashlib.sha256(c.encode()).hexdigest() for c in chunks]
@@ -104,7 +103,7 @@ async def embed_chunks(
                 content=chunks[idx],
                 embedding=vectors[pos],
                 embedding_model=embedding_model,
-                embedding_dims=embedding_dims,
+                embedding_dims=len(vectors[pos]),
                 content_hash=hashes[idx],
             )
             session.add(row)

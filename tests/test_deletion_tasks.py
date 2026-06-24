@@ -274,9 +274,9 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                     source_document_id=document_id,
                     chunk_index=0,
                     content="Connector chunk",
-                    embedding=[0.0] * 1536,
+                    embedding=[0.0] * 1024,
                     embedding_model="test",
-                    embedding_dims=1536,
+                    embedding_dims=1024,
                     content_hash="connector-chunk",
                 ),
                 KnowledgeChunk(
@@ -284,9 +284,9 @@ async def test_delete_workspace_data_removes_full_data_tree(engine, monkeypatch)
                     knowledge_entry_id=knowledge_entry_id,
                     chunk_index=0,
                     content="Memory chunk",
-                    embedding=[0.0] * 1536,
+                    embedding=[0.0] * 1024,
                     embedding_model="test",
-                    embedding_dims=1536,
+                    embedding_dims=1024,
                     content_hash="memory-chunk",
                 ),
                 RetrievalLog(

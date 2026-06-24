@@ -291,9 +291,9 @@ def test_plan4_models_have_tenant_scoped_constraints():
         assert names.issubset(constraint_names)
 
 
-def test_knowledge_chunk_uses_pgvector_1536_embedding():
+def test_knowledge_chunk_uses_pgvector_1024_embedding():
     embedding_type = KnowledgeChunk.__table__.columns["embedding"].type
-    assert getattr(embedding_type, "dim", None) == 1536
+    assert getattr(embedding_type, "dim", None) == 1024
 
 
 def test_plan6_knowledge_entry_has_resolution_memory_fields():

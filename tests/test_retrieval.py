@@ -9,7 +9,7 @@ import pytest
 
 from relay.connectors.retrieval import RetrievedChunk, retrieve
 
-FAKE_VECTOR = [0.1] * 1536
+FAKE_VECTOR = [0.1] * 1024
 
 
 def _make_chunk_row(workspace_id: uuid.UUID) -> MagicMock:
@@ -19,7 +19,7 @@ def _make_chunk_row(workspace_id: uuid.UUID) -> MagicMock:
     row.knowledge_entry_id = None
     row.content = "Some chunk content"
     row.embedding_model = "voyage-3"
-    row.embedding_dims = 1536
+    row.embedding_dims = 1024
     row.workspace_id = workspace_id
     return row
 
