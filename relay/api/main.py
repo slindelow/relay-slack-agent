@@ -59,14 +59,23 @@ handler = AsyncSlackRequestHandler(bolt_app)
 
 _mcp_mounted = False
 
-# Mount MCP server at /mcp (SSE transport — compatible with claude mcp and MCP inspector)
+# Mount MCP server.
+# Prefer streamable HTTP transport (MCP 2025-11 spec, works through all proxies).
+# Fall back to SSE transport if streamable_http_app is not available.
+# SSE is blocked on Railway's Hikari proxy at /sse paths.
 try:
     from relay.context.mcp_server import build_mcp_server as _build_mcp_server
 
     _mcp = _build_mcp_server()
-    api.mount("/mcp", _mcp.sse_app())
-    _mcp_mounted = True
-    logger.info("MCP server mounted at /mcp")
+    if hasattr(_mcp, "streamable_http_app"):
+        # streamable_http_app creates a single /mcp route; mount at /mcp-api so endpoint is /mcp-api/mcp
+        api.mount("/mcp-api", _mcp.streamable_http_app())
+        _mcp_mounted = True
+        logger.info("MCP server mounted at /mcp-api/mcp (streamable HTTP)")
+    else:
+        api.mount("/mcp", _mcp.sse_app())
+        _mcp_mounted = True
+        logger.info("MCP server mounted at /mcp/sse (SSE fallback)")
 except Exception as _mcp_exc:  # pragma: no cover — only fails if mcp package missing
     logger.error("MCP server not mounted: %s: %s", type(_mcp_exc).__name__, _mcp_exc, exc_info=True)
 
