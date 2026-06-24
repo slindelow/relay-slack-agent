@@ -142,6 +142,12 @@ def test_parse_register_args_extracts_owner():
     assert parsed == ("C123456", "acme-corp", "Acme Corp", "enterprise", "UOWNER")
 
 
+def test_parse_register_args_accepts_channel_mention_without_name():
+    # Slack omits the |channel-name suffix in some escaped slash-command payloads.
+    parsed = _parse_register_args("register <#C123456> Acme Corp enterprise")
+    assert parsed == ("C123456", "C123456", "Acme Corp", "enterprise", None)
+
+
 @pytest.mark.asyncio
 async def test_fetch_channel_metadata_extracts_external_team():
     client = AsyncMock()

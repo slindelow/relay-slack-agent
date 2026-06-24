@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 
 VALID_TIERS = {"enterprise", "pro", "starter"}
 
-# Matches Slack channel mentions like <#C123456|channel-name>
-_CHANNEL_MENTION_RE = re.compile(r"^<#([A-Z0-9]+)\|([^>]+)>$")
+# Matches Slack channel mentions like <#C123456|channel-name> or <#C123456>
+# (Slack omits the |channel-name suffix in some escaped slash-command payloads).
+_CHANNEL_MENTION_RE = re.compile(r"^<#([A-Z0-9]+)(?:\|([^>]+))?>$")
 
 # Matches Slack user mentions like <@U123456> or <@U123456|display-name>
 _USER_MENTION_RE = re.compile(r"^<@([A-Z0-9]+)(?:\|[^>]+)?>$")
@@ -47,7 +48,7 @@ def _parse_register_args(text: str) -> tuple[str, str, str, str, str | None] | N
     mention_match = _CHANNEL_MENTION_RE.match(channel_token)
     if mention_match:
         channel_id = mention_match.group(1)
-        channel_display_name = mention_match.group(2)
+        channel_display_name = mention_match.group(2) or channel_id
     elif channel_token.startswith("#"):
         channel_id = channel_token[1:]
         channel_display_name = channel_id
@@ -158,7 +159,9 @@ async def handle_register(ack, respond, command, client=None) -> None:
     """Handle `/relay register #channel account-name tier [@owner]`."""
     await ack()
 
-    parsed = _parse_register_args((command.get("text") or "").strip())
+    raw_text = (command.get("text") or "").strip()
+    logger.info("relay_register raw_text=%r", raw_text)
+    parsed = _parse_register_args(raw_text)
     if parsed is None:
         await respond(
             response_type="ephemeral",
