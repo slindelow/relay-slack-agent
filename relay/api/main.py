@@ -4,6 +4,7 @@ import json
 import logging
 import hmac
 import hashlib
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from uuid import UUID
@@ -54,22 +55,37 @@ if settings.sentry_dsn:
         traces_sample_rate=0.0,
     )
 
-api = FastAPI(title="RELAY", version="0.1.0")
-handler = AsyncSlackRequestHandler(bolt_app)
-
 _mcp_mounted = False
+_mcp_session_manager = None  # set below if streamable HTTP transport is used
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Start the MCP streamable HTTP session manager task group if mounted.
+    if _mcp_session_manager is not None:
+        async with _mcp_session_manager.run():
+            yield
+    else:
+        yield
+
+
+api = FastAPI(title="RELAY", version="0.1.0", lifespan=lifespan)
+handler = AsyncSlackRequestHandler(bolt_app)
 
 # Mount MCP server.
 # Prefer streamable HTTP transport (MCP 2025-11 spec, works through all proxies).
-# Fall back to SSE transport if streamable_http_app is not available.
-# SSE is blocked on Railway's Hikari proxy at /sse paths.
+# SSE is blocked on Railway's Hikari proxy at /mcp/sse paths.
 try:
     from relay.context.mcp_server import build_mcp_server as _build_mcp_server
 
     _mcp = _build_mcp_server()
     if hasattr(_mcp, "streamable_http_app"):
-        # streamable_http_app creates a single /mcp route; mount at /mcp-api so endpoint is /mcp-api/mcp
-        api.mount("/mcp-api", _mcp.streamable_http_app())
+        # streamable_http_app creates a single /mcp route inside the Starlette sub-app.
+        # Mount at /mcp-api so the full endpoint path is /mcp-api/mcp.
+        # The session manager must be started in the lifespan (see above).
+        _mcp_sub_app = _mcp.streamable_http_app()
+        _mcp_session_manager = _mcp.session_manager
+        api.mount("/mcp-api", _mcp_sub_app)
         _mcp_mounted = True
         logger.info("MCP server mounted at /mcp-api/mcp (streamable HTTP)")
     else:

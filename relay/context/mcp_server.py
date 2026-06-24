@@ -123,10 +123,35 @@ def build_mcp_server():
     """Return a FastMCP server when the optional MCP runtime is installed."""
     try:
         from mcp.server.fastmcp import FastMCP
+        from mcp.server.transport_security import TransportSecuritySettings
     except Exception as exc:  # pragma: no cover - exercised only without optional dep
         raise RuntimeError("Install the `mcp` package to run the RELAY MCP server") from exc
 
-    server = FastMCP("relay-context")
+    # Allow the app's own hostname (from APP_BASE_URL) plus standard localhost variants.
+    # FastMCP 1.28+ auto-enables DNS rebinding protection when host="127.0.0.1",
+    # which would reject all non-localhost clients unless we configure allowed_hosts.
+    from urllib.parse import urlparse
+
+    from relay.config import get_settings
+
+    _settings = get_settings()
+    _app_host = urlparse(_settings.app_base_url).netloc  # e.g. "web-production-acd3.up.railway.app"
+    _allowed_hosts = list(
+        {
+            _app_host,
+            "localhost",
+            "localhost:*",
+            "127.0.0.1",
+            "127.0.0.1:*",
+            "testserver",  # Starlette TestClient default host used in tests
+        }
+    )
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+    )
+
+    server = FastMCP("relay-context", transport_security=transport_security)
 
     # Primary tools (original names)
     server.tool(name="get_question_context")(get_question_context_tool)
