@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     )
 
     anthropic_api_key: str
-    classifier_model: str = "claude-3-5-haiku-latest"
-    draft_model: str = "claude-3-5-sonnet-latest"
+    classifier_model: str = "claude-haiku-4-5-20251001"
+    draft_model: str = "claude-sonnet-4-6"
     summary_model: str = "claude-haiku-4-5-20251001"
     classifier_open_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
     classifier_candidate_threshold: float = Field(default=0.60, ge=0.0, le=1.0)

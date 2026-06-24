@@ -66,7 +66,7 @@ async def classify_message(
     text: str,
     variant: Literal["a", "b"],
     *,
-    model: str = "claude-3-5-haiku-latest",
+    model: str = "claude-haiku-4-5-20251001",
     client: anthropic.AsyncAnthropic | None = None,
 ) -> ClassificationResult:
     """Classify a message. Tests should pass a mocked client; evaluation uses the real API."""

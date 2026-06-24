@@ -86,7 +86,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate RELAY question classifier.")
     parser.add_argument("dataset", type=Path)
     parser.add_argument("variant", choices=["a", "b"])
-    parser.add_argument("--model", default="claude-3-5-haiku-latest")
+    parser.add_argument("--model", default="claude-haiku-4-5-20251001")
     args = parser.parse_args()
 
     asyncio.run(evaluate_dataset(args.dataset, args.variant, args.model))
