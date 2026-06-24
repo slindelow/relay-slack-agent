@@ -46,12 +46,20 @@ check "Slack install endpoint returns 200" "$SLACK_INSTALL" "200"
 # --- MCP server ---
 echo ""
 echo "--- MCP Server ---"
-MCP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE/mcp/sse" 2>/dev/null || echo "000")
-if [ "$MCP_STATUS" = "200" ] || [ "$MCP_STATUS" = "307" ] || [ "$MCP_STATUS" = "200" ]; then
-  echo "✅ MCP /mcp/sse endpoint reachable (HTTP $MCP_STATUS)"
+MCP_RESP=$(curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  --max-time 10 \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"verify","version":"0.1"}}}' \
+  "$BASE/mcp-api/mcp" 2>/dev/null || echo "")
+HEALTH_MCP=$(curl -s --max-time 5 "$BASE/health" | python3 -c "import sys,json; print(json.load(sys.stdin).get('mcp_mounted','?'))" 2>/dev/null || echo "?")
+if echo "$MCP_RESP" | grep -q '"result"'; then
+  echo "✅ MCP /mcp-api/mcp responding (mcp_mounted=$HEALTH_MCP)"
   PASS=$((PASS + 1))
 else
-  echo "⚠️  MCP /mcp/sse returned HTTP $MCP_STATUS (may need a client to connect)"
+  echo "❌ MCP /mcp-api/mcp not responding (mcp_mounted=$HEALTH_MCP)"
+  echo "   Response: ${MCP_RESP:0:100}"
+  FAIL=$((FAIL + 1))
 fi
 
 # --- Legal/public pages ---
@@ -77,3 +85,7 @@ echo "Step 3:  In RELAY Beta workspace: /relay register #test-channel TestCo"
 echo "Step 4:  /relay settings → Connect HubSpot (requires HUBSPOT env vars in Railway)"
 echo "Step 5:  /relay settings → Connect GitHub (requires VOYAGE_API_KEY in Railway)"
 echo "Steps 6-14: Follow docs/deployment/beta-validation-checklist.md"
+echo ""
+echo "--- MCP Client Config ---"
+echo "Endpoint: $BASE/mcp-api/mcp (streamable HTTP, MCP 2024-11-05)"
+echo "Add to claude.json: {\"relay\": {\"command\": \"uv\", \"args\": [\"run\", \"python\", \"-m\", \"relay.context.mcp_server\"]}}"
