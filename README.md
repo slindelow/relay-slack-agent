@@ -170,16 +170,21 @@ RELAY exposes a Model Context Protocol server that gives AI assistants (includin
 uv run python -m relay.context.mcp_server
 ```
 
-### MCP over HTTP (SSE transport — starts automatically with the FastAPI app)
+### MCP over HTTP (streamable HTTP transport — starts automatically with the FastAPI app)
 
 ```bash
 uv run uvicorn relay.api.main:api --port 3000 --reload
-# MCP endpoint: http://localhost:3000/mcp/sse
+# MCP endpoint: http://localhost:3000/mcp-api/mcp
 ```
 
 Connect with MCP inspector:
 ```bash
-npx @modelcontextprotocol/inspector http://localhost:3000/mcp/sse
+npx @modelcontextprotocol/inspector http://localhost:3000/mcp-api/mcp
+```
+
+Production endpoint (Railway):
+```
+https://web-production-acd3.up.railway.app/mcp-api/mcp
 ```
 
 Or add to Claude Code's MCP config (`~/.claude.json`):
