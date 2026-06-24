@@ -148,7 +148,6 @@ def build_draft_modal(
                 "text": {"type": "plain_text", "text": "Regenerate"},
                 "action_id": "relay_regenerate_draft",
                 "value": str(draft_row.id),
-                "style": "default",
             },
             {
                 "type": "button",

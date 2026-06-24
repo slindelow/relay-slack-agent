@@ -38,6 +38,17 @@ def test_build_draft_modal_uses_question_title_excerpt():
     assert any("How do I configure SSO?" in text for text in text_blocks)
 
 
+def test_build_draft_modal_button_styles_are_valid_enums():
+    # Slack only accepts "primary" or "danger" for button style; omit otherwise.
+    modal = build_draft_modal(_draft(), _question(), None)
+    for block in modal["blocks"]:
+        if block.get("type") != "actions":
+            continue
+        for element in block.get("elements", []):
+            if "style" in element:
+                assert element["style"] in ("primary", "danger"), element
+
+
 def test_confidence_badge_high():
     assert "high" in _confidence_badge(0.9)
     assert "high" in _confidence_badge(0.8)
