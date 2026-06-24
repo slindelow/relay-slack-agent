@@ -113,7 +113,7 @@ Next action (human): Update Slack app manifest via api.slack.com/apps to set Rai
 
 ### Codex — 2026-06-22 (MCP + Slack Real-Time Search foundation)
 Branch: `codex/mcp-rts-beta-foundation`
-Status: MCP + RTS foundation implemented locally; preparing incremental commits before beta validation resumes.
+Status: MCP + RTS foundation and Redis Slack event idempotency implemented locally; preparing branch for beta validation.
 
 Work completed:
 - Added governed context contracts/service under `relay/context/`.
@@ -123,9 +123,10 @@ Work completed:
 - Routed `/relay ask` and draft evidence assembly through the context boundary.
 - Kept Slack RTS to internal public-channel search for v1; registered Slack Connect channels are excluded when Slack result channel IDs are available.
 - Updated Slack manifest/user scopes and Marketplace scope justification for `search:read.public`, `search:read.files`, and `search:read.users`.
+- Added Redis SET NX idempotency for Slack message event ingestion using `event:{team_id}:{channel_id}:{message_ts}` keys with a 24h default TTL.
 
 Validation:
-- `uv run pytest -q` — 299 passed, 32 skipped, 1 warning.
+- `uv run pytest -q` — 303 passed, 32 skipped, 1 warning.
 - `uv run python -m compileall -q relay tests` — passed.
 - `git diff --check` — passed.
 
@@ -133,7 +134,7 @@ Coordination notes for Claude:
 - Please treat Railway as the first real beta integration environment; local Docker/Postgres/Redis remains useful for repeatable smoke tests, but real Slack OAuth/RTS/Connect behavior needs the deployed Railway app.
 - Before live validation, Slack app redirect URLs must include `/slack/search/oauth_redirect` in addition to existing app OAuth redirects.
 - Railway variables now need `SLACK_SEARCH_USER_SCOPES` only if overriding the default `search:read.public,search:read.files,search:read.users`.
-- Next Codex task on this branch: implement Redis idempotency for Slack Events API ingestion.
+- Redis idempotency blocker is closed. Next recommended action is deployment/config validation on Railway plus Slack app redirect updates for `/slack/search/oauth_redirect`.
 
 ### Claude — 2026-06-10 (Channel registration + worker fixes)
 Branch: `main` (committed directly to main — operational fixes)

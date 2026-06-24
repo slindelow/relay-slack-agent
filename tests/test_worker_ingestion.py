@@ -101,9 +101,10 @@ async def test_process_event_skips_unmonitored_channel(monkeypatch):
     session_ctx, mock_session = make_session_ctx(None)
 
     with patch("relay.db.session.get_session", new=session_ctx):
-        with patch("classifier.classify.classify_message", new=AsyncMock()) as mock_classify:
-            from relay.worker.tasks import _process_slack_event_async
-            await _process_slack_event_async(make_payload())
+        with patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=True)):
+            with patch("classifier.classify.classify_message", new=AsyncMock()) as mock_classify:
+                from relay.worker.tasks import _process_slack_event_async
+                await _process_slack_event_async(make_payload())
 
     mock_classify.assert_not_called()
     mock_session.add.assert_not_called()
@@ -127,9 +128,10 @@ async def test_process_event_skips_internal_sender(monkeypatch):
     payload = make_payload(sender_team="TINTERNAL")
 
     with patch("relay.db.session.get_session", new=session_ctx):
-        with patch("classifier.classify.classify_message", new=AsyncMock()) as mock_classify:
-            from relay.worker.tasks import _process_slack_event_async
-            await _process_slack_event_async(payload)
+        with patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=True)):
+            with patch("classifier.classify.classify_message", new=AsyncMock()) as mock_classify:
+                from relay.worker.tasks import _process_slack_event_async
+                await _process_slack_event_async(payload)
 
     mock_classify.assert_not_called()
     mock_session.add.assert_not_called()
@@ -175,9 +177,10 @@ async def test_process_event_creates_open_question_above_threshold(monkeypatch):
     classify_result = make_classify_result(confidence=0.9)
 
     with patch("relay.db.session.get_session", new=_session_ctx):
-        with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
-            from relay.worker.tasks import _process_slack_event_async
-            await _process_slack_event_async(make_payload())
+        with patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=True)):
+            with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
+                from relay.worker.tasks import _process_slack_event_async
+                await _process_slack_event_async(make_payload())
 
     # Check that session.add was called with a Question having state="open"
     from relay.db.models import Question
@@ -223,9 +226,10 @@ async def test_process_event_creates_detected_question_between_thresholds(monkey
     classify_result = make_classify_result(confidence=0.7)
 
     with patch("relay.db.session.get_session", new=_session_ctx):
-        with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
-            from relay.worker.tasks import _process_slack_event_async
-            await _process_slack_event_async(make_payload())
+        with patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=True)):
+            with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
+                from relay.worker.tasks import _process_slack_event_async
+                await _process_slack_event_async(make_payload())
 
     from relay.db.models import Question
     added_objects = [call.args[0] for call in mock_write_session.add.call_args_list]
@@ -270,13 +274,43 @@ async def test_process_event_skips_below_candidate_threshold(monkeypatch):
     classify_result = make_classify_result(confidence=0.4)
 
     with patch("relay.db.session.get_session", new=_session_ctx):
-        with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
-            from relay.worker.tasks import _process_slack_event_async
-            await _process_slack_event_async(make_payload())
+        with patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=True)):
+            with patch("classifier.classify.classify_message", new=AsyncMock(return_value=classify_result)):
+                from relay.worker.tasks import _process_slack_event_async
+                await _process_slack_event_async(make_payload())
 
     from relay.db.models import Question
     added_objects = [call.args[0] for call in mock_write_session.add.call_args_list]
     questions = [o for o in added_objects if isinstance(o, Question)]
     assert len(questions) == 0
+
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_process_event_skips_duplicate_before_db_and_classifier(monkeypatch):
+    """A duplicate Slack delivery should not hit DB or classifier work."""
+    for k, v in ENV_VARS.items():
+        monkeypatch.setenv(k, v)
+
+    from relay.config import get_settings
+    get_settings.cache_clear()
+
+    with (
+        patch("relay.worker.tasks.claim_event_dedup_key", new=AsyncMock(return_value=False)) as mock_claim,
+        patch("relay.db.session.get_session") as mock_get_session,
+        patch("classifier.classify.classify_message", new=AsyncMock()) as mock_classify,
+    ):
+        from relay.worker.tasks import _process_slack_event_async, make_dedup_key
+
+        payload = make_payload()
+        await _process_slack_event_async(payload)
+
+    mock_claim.assert_awaited_once_with(
+        make_dedup_key(payload["team_id"], payload["channel_id"], payload["ts"]),
+        ttl_seconds=get_settings().slack_event_dedup_ttl_seconds,
+    )
+    mock_get_session.assert_not_called()
+    mock_classify.assert_not_called()
 
     get_settings.cache_clear()
