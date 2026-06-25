@@ -22,6 +22,10 @@ RELAY checks channel metadata during registration, including whether the bot is 
 
 RELAY needs to post approved customer responses, App Home interactions, and operational notifications. Generated drafts are never posted to customer channels without human approval.
 
+## `chat:write.customize`
+
+When a CSM approves a draft, RELAY posts the reply to the customer channel under the approving CSM's own name and avatar (not RELAY's), so the customer experience is a normal message from their CSM rather than from a tool. RELAY is an internal co-pilot and is not surfaced to the customer.
+
 ## `im:write`
 
 RELAY sends direct-message alert cards to customer success owners when a customer question is at risk of missing its SLA.

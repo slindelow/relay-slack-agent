@@ -39,11 +39,45 @@ async def _require_csm_for_workspace(workspace_id: uuid.UUID, slack_user_id: str
 
 
 def _build_customer_response_text(response_body: str, actor) -> str:
-    """Format approved draft text for the customer channel."""
-    display_name = (getattr(actor, "display_name", "") or "").strip()
-    if display_name:
-        return f"From {display_name} via RELAY:\n\n{response_body}"
-    return f"From your customer success team via RELAY:\n\n{response_body}"
+    """The customer-facing message is just the reply itself — no RELAY branding.
+
+    RELAY is an internal co-pilot for the CSM; the customer must never see it.
+    Attribution is handled by posting under the CSM's own name + avatar
+    (see ``_post_as_csm``), not by any text prefix.
+    """
+    return (response_body or "").strip()
+
+
+async def _post_as_csm(client, channel_id: str, text: str, actor, slack_user_id: str) -> None:
+    """Post the approved reply to the customer channel under the CSM's name + avatar.
+
+    Uses chat:write.customize so the customer sees the message as coming from the
+    CSM, with no RELAY/app branding. Degrades gracefully to a plain bot post if the
+    scope or profile lookup is unavailable.
+    """
+    username = (getattr(actor, "display_name", "") or "").strip()
+    icon_url: str | None = None
+    try:
+        info = await client.users_info(user=slack_user_id)
+        profile = (info.get("user") or {}).get("profile") or {}
+        username = username or (profile.get("real_name") or profile.get("display_name") or "").strip()
+        icon_url = profile.get("image_512") or profile.get("image_192") or profile.get("image_72")
+    except Exception:
+        logger.warning("relay_send_draft: could not fetch CSM profile for %s", slack_user_id)
+
+    kwargs: dict = {"channel": channel_id, "text": text}
+    if username:
+        kwargs["username"] = username
+    if icon_url:
+        kwargs["icon_url"] = icon_url
+
+    try:
+        await client.chat_postMessage(**kwargs)
+    except Exception:
+        # Most likely chat:write.customize not granted yet — post plainly so the
+        # reply still goes out (text already carries no RELAY branding).
+        logger.warning("relay_send_draft: customized post failed; falling back to plain post")
+        await client.chat_postMessage(channel=channel_id, text=text)
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +310,10 @@ async def handle_send_draft(ack, body, client):
             actor = actor_result.scalar_one_or_none()
             actor_id = actor.id if actor else None
 
-            # Post to customer channel
+            # Post to customer channel as the CSM (no RELAY branding visible)
             if channel_id_slack:
                 message_text = _build_customer_response_text(response_body, actor)
-                await client.chat_postMessage(channel=channel_id_slack, text=message_text)
+                await _post_as_csm(client, channel_id_slack, message_text, actor, user_id)
 
             # Update draft
             now = datetime.now(UTC)
