@@ -211,7 +211,7 @@ async def handle_generate_draft(ack, body, respond):
 
         await respond(
             response_type="ephemeral",
-            text="Draft generation started — I'll DM you a *Review draft* button when it's ready.",
+            text="Draft generation started — in a few seconds, refresh the RELAY *Home* tab and review it under *Drafts Ready for Review*.",
         )
     except Exception:
         logger.exception("relay_generate_draft: error for question %s", question_id_str)

@@ -128,13 +128,17 @@ async def handle_claim_question(ack, body, respond, logger=logger):
                 )
                 return
 
-        # Claim is committed — kick off draft generation and DM the claimer a
-        # "Review draft" button when it's ready (matches the claim → draft flow).
+        # Claim is committed — kick off draft generation. The draft surfaces in the
+        # RELAY App Home "Drafts Ready for Review" section with a Review draft button.
         from relay.worker.drafting_tasks import generate_draft_for_question
         generate_draft_for_question.delay(str(workspace_id), str(question_id), actor_slack_id)
 
         await respond(
-            text="✅ Claimed — RELAY is drafting a response now. I'll DM you a *Review draft* button in a few seconds.",
+            text=(
+                "✅ Claimed — RELAY is drafting a response. In a few seconds, open the "
+                "RELAY *Home* tab and you'll see a *Review draft* button under "
+                "*Drafts Ready for Review* to review and send."
+            ),
             response_type="ephemeral",
         )
 
