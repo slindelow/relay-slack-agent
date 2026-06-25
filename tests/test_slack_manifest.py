@@ -9,16 +9,22 @@ def test_slack_manifest_private_beta_routes_and_scopes():
     command = manifest["features"]["slash_commands"][0]
     assert command["command"] == "/relay"
     assert command["url"].endswith("/slack/events")
+    assert command["should_escape"] is True
+
+    app_home = manifest["features"]["app_home"]
+    assert app_home["messages_tab_enabled"] is True
 
     settings = manifest["settings"]
     assert settings["event_subscriptions"]["request_url"].endswith("/slack/events")
     assert settings["interactivity"]["request_url"].endswith("/slack/events")
     assert "app_home_opened" in settings["event_subscriptions"]["bot_events"]
     assert "app_uninstalled" in settings["event_subscriptions"]["bot_events"]
+    assert "message.channels" in settings["event_subscriptions"]["bot_events"]
     assert "message.groups" in settings["event_subscriptions"]["bot_events"]
 
     scopes = set(manifest["oauth_config"]["scopes"]["bot"])
     for required_scope in {
+        "channels:history",
         "channels:read",
         "chat:write",
         "commands",
@@ -28,5 +34,3 @@ def test_slack_manifest_private_beta_routes_and_scopes():
         "users:read",
     }:
         assert required_scope in scopes
-
-    assert "channels:history" not in scopes

@@ -4,6 +4,7 @@ set -e
 # Railway injects DATABASE_URL as postgresql:// — convert for asyncpg
 export DATABASE_URL="${DATABASE_URL/postgresql:\/\//postgresql+asyncpg:\/\/}"
 export DATABASE_URL="${DATABASE_URL/postgres:\/\//postgresql+asyncpg:\/\/}"
+export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
 
 case "${SERVICE_TYPE:-web}" in
   web)

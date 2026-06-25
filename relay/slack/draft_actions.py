@@ -38,6 +38,14 @@ async def _require_csm_for_workspace(workspace_id: uuid.UUID, slack_user_id: str
         return await require_relay_csm(session, workspace_id, slack_user_id)
 
 
+def _build_customer_response_text(response_body: str, actor) -> str:
+    """Format approved draft text for the customer channel."""
+    display_name = (getattr(actor, "display_name", "") or "").strip()
+    if display_name:
+        return f"From {display_name} via RELAY:\n\n{response_body}"
+    return f"From your customer success team via RELAY:\n\n{response_body}"
+
+
 # ---------------------------------------------------------------------------
 # US-005: Open draft review modal
 # ---------------------------------------------------------------------------
@@ -267,13 +275,10 @@ async def handle_send_draft(ack, body, client):
             )
             actor = actor_result.scalar_one_or_none()
             actor_id = actor.id if actor else None
-            csm_name = (actor.display_name or actor.slack_user_id) if actor else "your CSM"
 
             # Post to customer channel
             if channel_id_slack:
-                message_text = (
-                    f"Posted by RELAY on behalf of @{csm_name} after their approval.\n\n{response_body}"
-                )
+                message_text = _build_customer_response_text(response_body, actor)
                 await client.chat_postMessage(channel=channel_id_slack, text=message_text)
 
             # Update draft

@@ -5,7 +5,7 @@ display_information:
 features:
   app_home:
     home_tab_enabled: true
-    messages_tab_enabled: false
+    messages_tab_enabled: true
     messages_tab_read_only_enabled: true
   bot_user:
     display_name: RELAY
@@ -15,7 +15,7 @@ features:
       url: https://relay-beta.example.com/slack/events
       description: Configure RELAY and manage customer questions.
       usage_hint: help
-      should_escape: false
+      should_escape: true
 oauth_config:
   redirect_urls:
     - https://relay-beta.example.com/slack/oauth_redirect
@@ -23,6 +23,7 @@ oauth_config:
   scopes:
     bot:
       - app_mentions:read
+      - channels:history
       - channels:read
       - chat:write
       - commands
@@ -40,6 +41,7 @@ settings:
     bot_events:
       - app_home_opened
       - app_uninstalled
+      - message.channels
       - message.groups
   interactivity:
     is_enabled: true

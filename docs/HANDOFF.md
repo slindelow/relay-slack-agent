@@ -38,13 +38,13 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 
 **SET this session:**
 - `VOYAGE_API_KEY` — set on `web` + `worker` (knowledge search / draft evidence). NOTE: Voyage account now has a **payment method** added to lift the free-tier 3 RPM rate limit (200M free tokens still apply, so effectively $0).
-- `PYTHONPATH=/app` on `worker` — makes the top-level `classifier` package importable (it isn't installed as part of the `relay` package). Durable fix TODO: package `classifier` in pyproject or set PYTHONPATH in `scripts/entrypoint.sh` so this isn't a manual Railway var.
+- `PYTHONPATH=/app` is now exported by `scripts/entrypoint.sh` (2026-06-25), so the worker no longer depends on a manual Railway var for the top-level `classifier` package.
 
 **NOT YET SET** (HubSpot path deferred — optional for core demo):
 - `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` — needed for CRM sync (Steps 4 & 12 ARR figures)
 
 ## Slack App Config Required (one-time, done this session)
-These manifest defaults shipped with placeholder URLs / disabled features and had to be set in the live Slack app (api.slack.com/apps → RELAY). **The repo manifest `slack-app-manifest.yaml` still has the old values — update it so future installs are correct:**
+These manifest defaults shipped with placeholder URLs / disabled features and had to be set in the live Slack app (api.slack.com/apps → RELAY). **The repo manifest `slack-app-manifest.yaml` was synced on 2026-06-25; continue generating deploy-specific URLs with `scripts/configure-manifest.sh`:**
 - **Slash command `/relay`** → enable **"Escape channels, users, and links sent to your app"** (required for `/relay register` channel parsing)
 - **Interactivity** → enable, Request URL `https://web-production-acd3.up.railway.app/slack/events`
 - **Event Subscriptions** → enable, same Request URL; add bot event `message.channels` (manifest only had `message.groups`)
@@ -63,14 +63,13 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 - **13 — Delete workspace data** & **14 — Uninstall**: housekeeping, not yet run.
 
 ## Top Next Actions
-1. **Fix customer-facing message UX** (see Known Issues) — highest-value polish before the demo video.
-2. **Update `slack-app-manifest.yaml`** to match the live Slack config changes (see "Slack App Config Required" above) so re-installs/Marketplace submission are correct.
-3. **Durable `classifier` import fix** — package it or set `PYTHONPATH` in `scripts/entrypoint.sh` instead of the manual Railway var.
+1. Finish remaining beta checklist items: HubSpot, setup-complete state, SLA timer, account pulse ARR, workspace deletion, and uninstall.
+2. Redeploy Railway and regenerate/upload the Slack manifest from `slack-app-manifest.yaml`.
+3. Run live beta preflight/smokes after deploy, especially the send-flow regression.
 4. (Optional) Auto-generate the draft on **Claim** so it matches the spec's "claim → draft modal" flow (currently draft is a separate "Generate draft" action).
-5. (Optional) HubSpot connection for full CRM context (Steps 4, 12).
+5. (Optional) Build full OAuth-based connector onboarding beyond the admin-token beta setup.
 
 ## Known Issues
-- **Customer-facing approved-response UX** (`relay/slack/draft_actions.py:275`): the bot posts `Posted by RELAY on behalf of @<rawUserID> after their approval.\n\n<body>`. Problems: (a) falls back to the **raw Slack user ID** when `display_name` is empty (should resolve a real name or use a `<@U…>` mention); (b) the "on behalf of … after their approval" framing exposes the internal approval workflow to the **customer**, which reads awkwardly. Recommend a cleaner client-facing format (e.g., a subtle context-block signature, or post under the CSM's name) and Block Kit formatting instead of one plain-text string.
 - **Worker async cleanup warning**: harmless `RuntimeError: Event loop is closed` from the Slack HTTP client's `aclose()` after `asyncio.run()` — does not affect delivery; worth quieting later.
 
 ## Slack App Config
@@ -97,6 +96,19 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Codex — 2026-06-25 (project audit + beta polish)
+Branch: `main`
+Status: Audit/docs refreshed; three highest-value live-beta follow-ups fixed locally and awaiting deploy.
+
+Work completed:
+- Fixed customer-facing approved-response copy in `relay/slack/draft_actions.py`: no raw Slack user ID fallback and no internal "after approval" framing in customer channels.
+- Synced `slack-app-manifest.yaml` with live beta config: Messages Tab enabled, slash-command escaping enabled, `message.channels`, and `channels:history`.
+- Made the Railway worker `classifier` import durable by exporting `PYTHONPATH=/app` in `scripts/entrypoint.sh`.
+- Updated tests and scope docs for the revised manifest and public Slack Connect beta monitoring path.
+- Updated `README.md`, `tasks/STATUS.md`, this handoff, and the beta checklist to reflect the current project state.
+
+Next: deploy, regenerate/upload Slack manifest, then run the remaining beta checklist steps.
 
 ### Claude — 2026-06-24 (LIVE end-to-end beta validation + bug fixes)
 Branch: `main` (operational fixes committed directly, per established pattern)

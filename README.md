@@ -2,7 +2,7 @@
 
 RELAY is a Slack-native customer-success agent for teams managing Slack Connect customer channels. It detects unanswered customer questions, tracks SLA risk, retrieves context from CRM/docs/GitHub, drafts source-backed responses, and requires human approval before anything is posted back to a customer.
 
-> **Current status as of 2026-06-08:** Plans 1-8 have built most of the backend product loop and security foundation. Plan 9 is now active: private beta launch, deployment, Slack distribution, onboarding UX, production KMS, live Slack Connect validation, and external-user packaging. RELAY is not yet a self-serve public Slack Marketplace app.
+> **Current status as of 2026-06-25:** Plans 1-10 are merged. Railway is live and the core private-beta product loop has been validated end-to-end in a real Slack Connect workspace. RELAY is ready for focused beta follow-up, but is not yet a self-serve public Slack Marketplace app.
 
 ## Private Beta
 
@@ -34,15 +34,14 @@ For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/
 - Tenant isolation through PostgreSQL RLS and encrypted workspace/connector/CRM tokens.
 - Marketplace-readiness foundation: deletion flows, public legal pages, scope justification, reviewer sandbox, Sentry/health hooks, and security hardening.
 
-## What Still Blocks Private Beta
+## What Still Blocks Broader Private Beta
 
-The remaining blockers are operational, not code:
+The core loop works live. Remaining work before broader invited usage is validation and polish:
 
-- **Deploy the stack** — stand up Railway web, worker, beat, Postgres with pgvector, Redis, and variables using the runbook in `docs/deployment/private-beta-railway.md`. Use `scripts/start-local.sh` to validate locally first.
-- **Create the Slack app** — run `scripts/configure-manifest.sh $APP_BASE_URL`, paste the generated manifest into https://api.slack.com/apps, and copy the credentials into your environment.
-- **Run beta preflight** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta`, then rerun with `--live` after deploy.
-- **Validate beta encryption** — set `KMS_PROVIDER=none` for Railway beta and run `.venv/bin/python scripts/smoke_kms.py` after deploy. AWS KMS remains the later hardened production path.
-- **Run the end-to-end validation checklist** — follow `docs/deployment/private-beta-acceptance.md` in a live workspace before inviting external users.
+- **Finish remaining live validation** — HubSpot, setup-complete state, SLA timer, account pulse ARR, workspace deletion, and uninstall remain pending in `docs/deployment/beta-validation-checklist.md`.
+- **Refresh Slack app config on each reinstall** — run `scripts/configure-manifest.sh $APP_BASE_URL` and upload the generated manifest so Messages Tab, channel events, OAuth redirects, and scopes stay aligned.
+- **Run beta preflight/smokes after deploys** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta --live` and `.venv/bin/python scripts/smoke_kms.py`.
+- **Keep HubSpot optional for core demos** — CRM-backed ARR and setup completion need HubSpot env vars/OAuth; GitHub-backed evidence and `/relay ask` already work.
 
 ## Private Beta Launch Docs
 

@@ -4,7 +4,11 @@ RELAY requests the minimum Slack scopes needed to monitor registered Slack Conne
 
 ## `groups:history`
 
-RELAY reads message events in private Slack Connect channels where it has been installed and where an admin has registered the channel. This is required to detect unanswered customer questions and start the SLA workflow. RELAY does not request `channels:history`, so internal public-channel history is not monitored.
+RELAY reads message events in private Slack Connect channels where it has been installed and where an admin has registered the channel. This is required to detect unanswered customer questions and start the SLA workflow.
+
+## `channels:history`
+
+RELAY reads message events in public Slack Connect channels where it has been installed and where an admin has registered the channel. This is required for beta workspaces that use public shared customer channels. RELAY does not bulk ingest public channels; unregistered channels are ignored by the worker.
 
 ## `groups:read`
 
@@ -12,7 +16,7 @@ RELAY uses this scope to identify private channels the bot is a member of and to
 
 ## `channels:read`
 
-RELAY checks channel metadata during registration, including whether the bot is present and whether the channel is shared externally. It does not request public-channel message history.
+RELAY checks channel metadata during registration, including whether the bot is present and whether the channel is shared externally.
 
 ## `chat:write`
 

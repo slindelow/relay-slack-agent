@@ -157,6 +157,33 @@ async def test_register_rejected_for_non_admin():
 # ---------------------------------------------------------------------------
 
 
+def test_customer_response_text_uses_display_name_without_approval_framing():
+    from relay.slack.draft_actions import _build_customer_response_text
+
+    actor = MagicMock()
+    actor.display_name = "Sofia"
+    actor.slack_user_id = "U_ADMIN"
+
+    text = _build_customer_response_text("Here is the answer.", actor)
+
+    assert text == "From Sofia via RELAY:\n\nHere is the answer."
+    assert "approval" not in text.lower()
+    assert "U_ADMIN" not in text
+
+
+def test_customer_response_text_falls_back_without_raw_slack_id():
+    from relay.slack.draft_actions import _build_customer_response_text
+
+    actor = MagicMock()
+    actor.display_name = ""
+    actor.slack_user_id = "U_ADMIN"
+
+    text = _build_customer_response_text("Here is the answer.", actor)
+
+    assert text == "From your customer success team via RELAY:\n\nHere is the answer."
+    assert "U_ADMIN" not in text
+
+
 @pytest.mark.asyncio
 async def test_send_draft_rejected_for_viewer():
     """Viewer cannot send drafts to customer channel."""
