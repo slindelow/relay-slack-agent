@@ -6,13 +6,14 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 ## Current Status
 Repo live at `https://github.com/slindelow/relay-slack-agent`.
 
-**Plans 1–9 merged to main. Code is complete. Railway deployment is LIVE.**
+**Plans 1–9 merged. MCP context server added. Railway is LIVE and the core product loop is VALIDATED END-TO-END in a real Slack Connect workspace (2026-06-24).**
 
-Merged to `main` (all plans):
+The full customer-success loop now works live: customer posts in a Slack Connect channel → classified → SLA alert DM to the CSM → claim → **MCP-powered cited draft (Sonnet 4.6)** → human review modal → bot posts approved response → question resolved. Knowledge retrieval pulls from a connected+indexed GitHub source (`/relay ask` returns cited results).
+
+Merged to `main` (all plans + this session's live-validation fixes):
 - PRs #1–18: Plans 1–8 (foundation → security hardening)
-- PR #19 (`claude/plan-9a-foundation`): Plan 9 — multi-workspace OAuth, connector UI, KMS, deployment artifacts, beta docs — **merged 2026-06-08**
-- PR #20 (`codex/plan-9-kms-smoke-runner`): KMS smoke runner and beta preflight tooling — **merged 2026-06-09**
-- PR #21 (`codex/plan-9-beta-env-preflight`): Railway deploy config, local KMS smoke mode — **merged 2026-06-09**
+- PR #19–21: Plan 9 (multi-workspace OAuth, connector UI, KMS, deployment, beta docs) — merged 2026-06-08/09
+- MCP context server (PR #25) + this session's fixes (commits `1c27eeb`, `cc3f63d`, `0772760`, `d5bf4a6`, `f1152d9`, `36bb082`) — see 2026-06-24 recap below
 
 Open PRs: none.
 
@@ -35,29 +36,42 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 - `ANTHROPIC_API_KEY` — set
 - `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET` — set
 
-**NOT YET SET** (optional until connectors needed):
-- `VOYAGE_API_KEY` — needed for knowledge search / draft evidence
-- `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` — needed for CRM sync
+**SET this session:**
+- `VOYAGE_API_KEY` — set on `web` + `worker` (knowledge search / draft evidence). NOTE: Voyage account now has a **payment method** added to lift the free-tier 3 RPM rate limit (200M free tokens still apply, so effectively $0).
+- `PYTHONPATH=/app` on `worker` — makes the top-level `classifier` package importable (it isn't installed as part of the `relay` package). Durable fix TODO: package `classifier` in pyproject or set PYTHONPATH in `scripts/entrypoint.sh` so this isn't a manual Railway var.
 
-## Remaining Steps to Beta Validation
+**NOT YET SET** (HubSpot path deferred — optional for core demo):
+- `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` — needed for CRM sync (Steps 4 & 12 ARR figures)
 
-1. **Add OAuth redirect URL to Slack app** ← NEXT ACTION
-   - Go to api.slack.com/apps → RELAY app → OAuth & Permissions → Redirect URLs
-   - Add: `https://web-production-acd3.up.railway.app/slack/oauth_redirect`
-   - Save URLs
+## Slack App Config Required (one-time, done this session)
+These manifest defaults shipped with placeholder URLs / disabled features and had to be set in the live Slack app (api.slack.com/apps → RELAY). **The repo manifest `slack-app-manifest.yaml` still has the old values — update it so future installs are correct:**
+- **Slash command `/relay`** → enable **"Escape channels, users, and links sent to your app"** (required for `/relay register` channel parsing)
+- **Interactivity** → enable, Request URL `https://web-production-acd3.up.railway.app/slack/events`
+- **Event Subscriptions** → enable, same Request URL; add bot event `message.channels` (manifest only had `message.groups`)
+- **OAuth scope** → add `channels:history` (needed for public-channel messages)
+- **App Home → Messages Tab** → enable (was disabled → `messages_tab_disabled` blocked CSM DM alerts)
 
-2. **Install app into test workspace**
-   - Open `https://web-production-acd3.up.railway.app/` → click Add to Slack
-   - Authorize in the "RELAY Beta" test workspace
+## Beta Validation Status (see `docs/deployment/beta-validation-checklist.md`)
 
-3. **Walk beta validation checklist**
-   - File: `docs/deployment/beta-validation-checklist.md`
-   - 14 steps: install → register channel → connect HubSpot → connect GitHub → classify question → claim → draft → send → pulse → delete
+**PASSED (8/14):** 1 Install · 2 App Home · 3 Register channel · 5 Knowledge source (GitHub synced) · 7 Question→classify→alert · 9 Claim/draft (MCP) · 10 Send (works; UX issue below) · 11 `/relay ask` (cited results)
 
-4. **Add Voyage API key** (before step 9 — draft generation needs embeddings)
-   - `railway variable set "VOYAGE_API_KEY=<key>" --service web`
-   - `railway variable set "VOYAGE_API_KEY=<key>" --service worker`
-   - Get key at dash.voyageai.com
+**Remaining:**
+- **4 — HubSpot** (deferred): set `HUBSPOT_*` env vars + OAuth. Optional for core demo.
+- **6 — Setup complete**: will read 3/4 until HubSpot connected.
+- **8 — SLA timer**: quick to verify (`/relay pulse` time-since; no premature breach).
+- **12 — Account pulse**: works (`/relay pulse TestCo` renders); ARR figure needs HubSpot.
+- **13 — Delete workspace data** & **14 — Uninstall**: housekeeping, not yet run.
+
+## Top Next Actions
+1. **Fix customer-facing message UX** (see Known Issues) — highest-value polish before the demo video.
+2. **Update `slack-app-manifest.yaml`** to match the live Slack config changes (see "Slack App Config Required" above) so re-installs/Marketplace submission are correct.
+3. **Durable `classifier` import fix** — package it or set `PYTHONPATH` in `scripts/entrypoint.sh` instead of the manual Railway var.
+4. (Optional) Auto-generate the draft on **Claim** so it matches the spec's "claim → draft modal" flow (currently draft is a separate "Generate draft" action).
+5. (Optional) HubSpot connection for full CRM context (Steps 4, 12).
+
+## Known Issues
+- **Customer-facing approved-response UX** (`relay/slack/draft_actions.py:275`): the bot posts `Posted by RELAY on behalf of @<rawUserID> after their approval.\n\n<body>`. Problems: (a) falls back to the **raw Slack user ID** when `display_name` is empty (should resolve a real name or use a `<@U…>` mention); (b) the "on behalf of … after their approval" framing exposes the internal approval workflow to the **customer**, which reads awkwardly. Recommend a cleaner client-facing format (e.g., a subtle context-block signature, or post under the CSM's name) and Block Kit formatting instead of one plain-text string.
+- **Worker async cleanup warning**: harmless `RuntimeError: Event loop is closed` from the Slack HTTP client's `aclose()` after `asyncio.run()` — does not affect delivery; worth quieting later.
 
 ## Slack App Config
 - **App name:** RELAY
@@ -83,6 +97,26 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Claude — 2026-06-24 (LIVE end-to-end beta validation + bug fixes)
+Branch: `main` (operational fixes committed directly, per established pattern)
+Status: Core product loop validated live in the "RELAY Beta" Slack Connect workspace. 8/14 checklist steps PASS. 311 tests pass.
+
+Walked the beta validation checklist live for the first time and fixed every bug it surfaced (each is a real latent issue that unit tests didn't catch). Commits on `main`:
+- `1c27eeb` `fix(register)` — accept escaped channel mention `<#C123>` without a `|name` suffix (Slack sends this form for slash commands with escaping on). `/relay register` was returning the usage error.
+- `cc3f63d` `fix(worker)` — use `NullPool` for the async engine when `SERVICE_TYPE=worker`. Celery prefork runs each task in a fresh `asyncio.run()` loop; the pooled asyncpg connections were bound to a dead loop → "attached to a different loop" crashes on every task (SLA poller, sync, drafts).
+- `0772760` `fix(embeddings)` — migration 0011 retypes `knowledge_chunks.embedding` to `vector(1024)` to match voyage-3 (was `vector(1536)`, OpenAI's size). Every sync insert had failed with "expected 1536 dimensions, not 1024".
+- `d5bf4a6` `fix(models)` — classifier/draft model IDs were retired (`claude-3-5-haiku-latest` / `claude-3-5-sonnet-latest` → 404). Now `claude-haiku-4-5-20251001` / `claude-sonnet-4-6`.
+- `f1152d9` `fix(home)` — added a "Drafts Ready for Review" App Home section with a working `Review draft` button. Generated drafts had **no UI affordance to open them** (the `relay_open_draft_modal` handler existed but no block rendered it).
+- `36bb082` `fix(draft-modal)` — Regenerate button used `style: "default"` (invalid Slack enum) → `views_open` rejected the whole modal so `Review draft` did nothing.
+
+Also required (non-code, Slack/Railway config — documented above): `/relay` escape setting, Interactivity, Event Subscriptions + `message.channels` + `channels:history` + reinstall, Messages Tab, account owner assignment, `VOYAGE_API_KEY` + Voyage payment method, `PYTHONPATH=/app`.
+
+Confirmed working live: install → register → ingest → classify → SLA DM alert → claim → MCP draft (Sonnet 4.6) → review modal → send (bot posts, question resolves) → `/relay ask` cited retrieval from indexed GitHub source.
+
+Logged as Known Issues (above): customer-facing approved-response UX (raw user ID + internal "after their approval" framing); worker async-cleanup warning; manifest still has placeholder/disabled config.
+
+Next: see "Top Next Actions" — fix customer-facing message UX, sync the manifest to live config, make the `classifier`/PYTHONPATH fix durable.
 
 ### Claude — 2026-06-22 (MCP load-bearing + architecture diagram)
 Branch: `claude/plan-10-mcp-rts` (PR #25 — pending merge)

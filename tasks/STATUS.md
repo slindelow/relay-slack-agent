@@ -4,6 +4,16 @@
 
 ---
 
+## 🟢 Live Beta Validation (2026-06-24)
+
+Core product loop **validated end-to-end** in the live "RELAY Beta" Slack Connect workspace on Railway. 8/14 checklist steps PASS (1,2,3,5,7,9,10,11). Full chain works: customer question → classify → SLA DM alert → claim → **MCP-powered cited draft (Sonnet 4.6)** → review modal → bot posts approved response → resolved; `/relay ask` returns cited results from an indexed GitHub source.
+
+Six live bugs fixed this session (all on `main`): channel-mention parser (`1c27eeb`), worker async event-loop/NullPool (`cc3f63d`), embedding dims 1024 (`0772760`), retired model IDs (`d5bf4a6`), App Home draft-review surfacing (`f1152d9`), draft-modal button style (`36bb082`). Plus Slack app config (escape/interactivity/events/scope/messages-tab) and Voyage payment method. See `docs/HANDOFF.md` 2026-06-24 entry and `docs/deployment/beta-validation-checklist.md` for details.
+
+Remaining checklist: 4 HubSpot (deferred), 6 setup-complete (3/4), 8 SLA timer, 12 pulse ARR (needs HubSpot), 13 delete, 14 uninstall.
+
+---
+
 ## Current State (as of 2026-06-08)
 
 | Plan | Scope | Status | Where |
@@ -61,6 +71,10 @@ Marketplace submission package
 
 ## Known TODOs (non-blocking)
 
+- **Customer-facing approved-response UX** (`relay/slack/draft_actions.py:275`) — bot posts `Posted by RELAY on behalf of @<rawUserID> after their approval`; shows raw Slack ID and exposes internal approval framing to the customer. Needs a cleaner client-facing format. (Flagged during 2026-06-24 live validation.)
+- **`slack-app-manifest.yaml` is stale** — has placeholder URLs and disabled Messages Tab / missing `message.channels` + `channels:history`. Update to match the live Slack config (see `docs/HANDOFF.md`) for correct re-installs / Marketplace submission.
+- **`classifier` import depends on `PYTHONPATH=/app`** (manual Railway var) — make durable by packaging `classifier` in pyproject or exporting PYTHONPATH in `scripts/entrypoint.sh`.
+- (Optional) Auto-generate draft on **Claim** to match the spec's "claim → draft modal" flow (currently a separate "Generate draft" action).
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py` — next Codex task on `codex/mcp-rts-beta-foundation`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 - Railway beta uses `KMS_PROVIDER=none` plus `TOKEN_ENCRYPTION_KEY`; AWS KMS remains the later hardened production path.
