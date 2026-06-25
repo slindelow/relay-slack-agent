@@ -165,11 +165,11 @@ async def handle_generate_draft(ack, body, respond):
             if q_result.scalar_one_or_none() is None:
                 return
 
-        generate_draft_for_question.delay(str(workspace_id), str(question_id))
+        generate_draft_for_question.delay(str(workspace_id), str(question_id), user_id)
 
         await respond(
             response_type="ephemeral",
-            text="Draft generation started — you'll be notified when ready.",
+            text="Draft generation started — I'll DM you a *Review draft* button when it's ready.",
         )
     except Exception:
         logger.exception("relay_generate_draft: error for question %s", question_id_str)

@@ -153,9 +153,12 @@ async def test_claim_question_acks_immediately():
     with patch("relay.db.session.get_session", new=ctx):
         with patch("relay.question.machine.claim_question", new=AsyncMock()):
             with patch("relay.slack.actions._get_or_create_user", new=AsyncMock(return_value=_make_user_mock())):
-                await handle_claim_question(ack=ack, body=body, respond=respond)
+                with patch("relay.worker.drafting_tasks.generate_draft_for_question.delay") as mock_draft_delay:
+                    await handle_claim_question(ack=ack, body=body, respond=respond)
 
     ack.assert_awaited_once()
+    # Claiming should kick off draft generation for the claimer.
+    mock_draft_delay.assert_called_once()
 
 
 @pytest.mark.asyncio
