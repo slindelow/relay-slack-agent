@@ -53,7 +53,9 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 
 ## Beta Validation Status (see `docs/deployment/beta-validation-checklist.md`)
 
-**PASSED (8/14):** 1 Install · 2 App Home · 3 Register channel · 5 Knowledge source (GitHub synced) · 7 Question→classify→alert · 9 Claim/draft (MCP) · 10 Send (works; UX issue below) · 11 `/relay ask` (cited results)
+**PASSED (8/14):** 1 Install · 2 App Home · 3 Register channel · 5 Knowledge source (GitHub synced) · 7 Question→classify→alert · 9 Claim→draft (MCP) · 10 Send (as CSM, no RELAY branding) · 11 `/relay ask` (cited results)
+
+The full CSM loop is confirmed working live with polished UX (2026-06-25): claim auto-generates a draft → review in App Home → send appears to the customer as the CSM with zero RELAY branding; drafts are always sendable (safe holding reply when evidence is thin).
 
 **Remaining:**
 - **4 — HubSpot** (deferred): set `HUBSPOT_*` env vars + OAuth. Optional for core demo.
@@ -63,14 +65,14 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 - **13 — Delete workspace data** & **14 — Uninstall**: housekeeping, not yet run.
 
 ## Top Next Actions
-1. Finish remaining beta checklist items: HubSpot, setup-complete state, SLA timer, account pulse ARR, workspace deletion, and uninstall.
-2. Redeploy Railway and regenerate/upload the Slack manifest from `slack-app-manifest.yaml`.
-3. Run live beta preflight/smokes after deploy, especially the send-flow regression.
-4. (Optional) Auto-generate the draft on **Claim** so it matches the spec's "claim → draft modal" flow (currently draft is a separate "Generate draft" action).
-5. (Optional) Build full OAuth-based connector onboarding beyond the admin-token beta setup.
+1. Finish remaining beta checklist items: **8 SLA timer**, **13 workspace deletion**, **14 uninstall** (housekeeping); optional **4 HubSpot** + **6 setup-complete** + **12 pulse ARR**.
+2. Reinstall the Slack app so the new `chat:write.customize` scope is granted (lets Send post as the CSM's name/avatar). Until then Send falls back to a plain bot post (still no RELAY wording).
+3. (Optional) Upgrade Send to post via the CSM's **user token** so the residual "APP" badge disappears entirely (Option B — needs per-CSM token OAuth, similar to the Slack Search connect flow).
+4. (Optional) Build full OAuth-based connector onboarding beyond the admin-token beta setup.
+5. Record the demo video and finish the Devpost submission.
 
 ## Known Issues
-- **Worker async cleanup warning**: harmless `RuntimeError: Event loop is closed` from the Slack HTTP client's `aclose()` after `asyncio.run()` — does not affect delivery; worth quieting later.
+- *(None blocking.)* Earlier worker `Event loop is closed` noise was removed by dropping the worker→Slack DM (drafts surface in App Home instead).
 
 ## Slack App Config
 - **App name:** RELAY
@@ -96,6 +98,20 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Claude — 2026-06-25 (UX polish: usable drafts, CSM-attributed send, App Home review)
+Branch: `main` (operational fixes, per established pattern)
+Status: Full CSM loop confirmed working live with polished UX. 312 tests pass.
+
+Driven by live re-testing with the user. Commits on `main`:
+- `309d87b` `fix(generator)` — drafts are now ALWAYS a sendable customer reply. The prompt previously told the model to leave `customer_draft` empty when evidence was thin, so CSMs got an internal "Cannot Draft" brief. Now it writes a grounded answer when sources support it, or a safe **holding reply** ("let me confirm with the team and follow up") that invents no specifics; caveats live in `internal_brief` only.
+- `e87fc5e` `feat(send)` — the approved reply posts to the customer channel **as the CSM (display name + avatar)** via `chat:write.customize`, with **zero RELAY branding** (no "via RELAY", no raw Slack ID). Falls back to a clean plain post if the scope isn't granted. RELAY is invisible to the customer by design. *(Requires app reinstall to grant `chat:write.customize`.)*
+- `7ca0926` `feat(claim)` — clicking **Claim** now auto-generates the draft (was a separate App Home action).
+- `7cf92c6` `fix(drafts)` — the worker's draft-ready DM used the Bolt `app.client`, which can't post from Celery's per-task event loop (`failed to notify CSM` / `Event loop is closed`). Removed it; drafts surface in the App Home **"Drafts Ready for Review"** section (working **Review draft** button), and the claim/generate confirmations point CSMs to the Home tab. This is the preferred review surface (review + send in place, no copy/paste).
+
+Net live flow: customer question → classify → SLA alert → **Claim (auto-drafts)** → App Home **Review draft** → edit → **Send (appears as the CSM, no RELAY)** → resolved.
+
+Open follow-ups: reinstall for `chat:write.customize`; optional user-token send (drop the APP badge); remaining housekeeping checklist steps (8/13/14) + optional HubSpot.
 
 ### Codex — 2026-06-25 (project audit + beta polish)
 Branch: `main`

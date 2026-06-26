@@ -71,7 +71,8 @@ Marketplace submission package
 
 ## Known TODOs (non-blocking)
 
-- (Optional) Auto-generate draft on **Claim** to match the spec's "claim → draft modal" flow (currently a separate "Generate draft" action).
+- (Optional) Send via the CSM's **user token** so the residual "APP" badge disappears (current Send posts as the CSM's name/avatar via `chat:write.customize`, which leaves a small APP tag).
+- Reinstall the Slack app to grant `chat:write.customize` (until then Send falls back to a clean plain bot post).
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py` — next Codex task on `codex/mcp-rts-beta-foundation`
 - `Question.snoozed_until` field is dead schema — remove in a future migration (Snooze table is authoritative)
 - Railway beta uses `KMS_PROVIDER=none` plus `TOKEN_ENCRYPTION_KEY`; AWS KMS remains the later hardened production path.
@@ -79,10 +80,17 @@ Marketplace submission package
 
 ## Audit Updates — 2026-06-25
 
-- ✅ Fixed customer-facing approved-response copy in `relay/slack/draft_actions.py`; messages now read `From <display name> via RELAY` or fall back to `From your customer success team via RELAY` without raw Slack IDs.
-- ✅ Synced `slack-app-manifest.yaml` to the live beta requirements: Messages Tab enabled, `/relay` escaping enabled, `message.channels` event added, and `channels:history` scope included.
+- ✅ Synced `slack-app-manifest.yaml` to the live beta requirements: Messages Tab enabled, `/relay` escaping enabled, `message.channels` event added, `channels:history` + `chat:write.customize` scopes included.
 - ✅ Made the Railway `classifier` import workaround durable by exporting `PYTHONPATH=/app` in `scripts/entrypoint.sh`.
 - ✅ Updated scope/docs/tests to reflect the public Slack Connect beta path and the new manifest contract.
+
+## UX Polish — 2026-06-25 (full CSM loop confirmed live)
+
+- ✅ Drafts are always sendable: generator (`309d87b`) writes a grounded answer or a safe holding reply, never an internal "Cannot Draft" brief.
+- ✅ Send appears to the customer **as the CSM (name + avatar), zero RELAY branding** via `chat:write.customize` (`e87fc5e`), with a clean plain-post fallback.
+- ✅ **Claim auto-generates the draft** (`7ca0926`); draft surfaces in the App Home "Drafts Ready for Review" section (working Review draft button); claim/generate confirmations point to the Home tab (`7cf92c6`).
+- ✅ Removed the broken worker→Slack DM (Bolt client can't post from Celery's event loop) and its `Event loop is closed` log noise.
+- Confirmed end-to-end live: question → classify → SLA alert → claim (auto-draft) → App Home review → send-as-CSM → resolved.
 
 ## Plan 9 Progress
 
