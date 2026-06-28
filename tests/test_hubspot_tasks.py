@@ -43,6 +43,7 @@ async def test_sync_hubspot_accounts_upserts_customer_accounts(db_session, relay
                 "domain": "acme.example",
                 "hs_lead_status": "customer",
                 "dealtype": "newbusiness",
+                "annualrevenue": "1500000",
             },
         },
         {
@@ -78,6 +79,9 @@ async def test_sync_hubspot_accounts_upserts_customer_accounts(db_session, relay
     assert accounts["101"].external_crm_url == "https://app.hubspot.com/contacts/12345/company/101"
     assert accounts["101"].tier == "starter"
     assert accounts["101"].lifecycle_stage == "customer"
+    assert float(accounts["101"].arr) == 1500000.0
+    # Company 102 has no annualrevenue property → ARR stays unset.
+    assert accounts["102"].arr is None
 
     await db_session.refresh(connection)
     assert connection.sync_status == "synced"
@@ -112,6 +116,7 @@ async def test_sync_hubspot_accounts_updates_existing_customer_account(db_sessio
             crm_provider="hubspot",
             external_crm_id="101",
             tier="enterprise",
+            arr=500000,
         )
     )
     await db_session.flush()
@@ -123,6 +128,7 @@ async def test_sync_hubspot_accounts_updates_existing_customer_account(db_sessio
                 "name": "New Name",
                 "domain": "new.example",
                 "hs_lead_status": "active",
+                "annualrevenue": "2000000",
             },
         }
     ]
@@ -147,3 +153,22 @@ async def test_sync_hubspot_accounts_updates_existing_customer_account(db_sessio
     assert account.name == "New Name"
     assert account.domain == "new.example"
     assert account.tier == "enterprise"
+    assert float(account.arr) == 2000000.0
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("1500000", 1500000.0),
+        ("1500000.50", 1500000.50),
+        (2000000, 2000000.0),
+        (None, None),
+        ("", None),
+        ("   ", None),
+        ("not-a-number", None),
+    ],
+)
+def test_parse_arr(value, expected):
+    from relay.worker.hubspot_tasks import _parse_arr
+
+    assert _parse_arr(value) == expected

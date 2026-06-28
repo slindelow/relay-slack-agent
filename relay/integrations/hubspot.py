@@ -165,7 +165,7 @@ async def fetch_hubspot_companies(
     """Fetch company objects from HubSpot CRM API."""
     params = {
         "limit": limit,
-        "properties": "name,domain,hs_lead_status,dealtype,createdate,hs_analytics_source",
+        "properties": "name,domain,hs_lead_status,dealtype,createdate,hs_analytics_source,annualrevenue",
     }
     headers = {"Authorization": f"Bearer {access_token}"}
     _client = client or httpx.AsyncClient()

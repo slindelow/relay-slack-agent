@@ -9,6 +9,24 @@ from relay.worker.celery_app import celery
 logger = logging.getLogger(__name__)
 
 
+def _parse_arr(value) -> float | None:
+    """Parse a HubSpot ``annualrevenue`` property into a float, or None.
+
+    HubSpot returns the value as a string (e.g. ``"1500000"``) or null. Any
+    blank or non-numeric value is treated as "no ARR" rather than an error so a
+    single malformed company never fails the whole sync.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
 @celery.task(bind=True, max_retries=3)
 def sync_hubspot_accounts(self, workspace_id: str) -> None:
     """Sync HubSpot company accounts into customer_accounts for a workspace.
@@ -119,6 +137,7 @@ async def _upsert_hubspot_company(
     props = company.get("properties") or {}
     name = (props.get("name") or props.get("domain") or f"HubSpot company {external_id}").strip()
     domain = (props.get("domain") or "").strip() or None
+    arr = _parse_arr(props.get("annualrevenue"))
     portal_id = connection.hubspot_portal_id or "unknown"
     external_url = f"https://app.hubspot.com/contacts/{portal_id}/company/{external_id}"
 
@@ -151,6 +170,7 @@ async def _upsert_hubspot_company(
             external_crm_url=external_url,
             tier="starter",
             lifecycle_stage=props.get("hs_lead_status"),
+            arr=arr,
             account_context=account_context,
         )
         session.add(account)
@@ -161,5 +181,7 @@ async def _upsert_hubspot_company(
     account.domain = domain
     account.external_crm_url = external_url
     account.lifecycle_stage = props.get("hs_lead_status")
+    if arr is not None:
+        account.arr = arr
     account.account_context = account_context
     return True
