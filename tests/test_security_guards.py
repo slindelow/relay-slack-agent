@@ -349,6 +349,99 @@ def test_hubspot_install_uses_authenticated_workspace():
     assert response.headers["location"].startswith("https://app.hubspot.com/oauth/authorize?")
 
 
+def test_hubspot_install_browser_path_uses_team_user_query_params():
+    """The /relay settings button opens /hubspot/install in a browser with
+    ?team_id=&user_id= (no Authorization header). It must resolve the workspace,
+    verify admin, and redirect to HubSpot OAuth."""
+    from relay.api.main import api
+
+    client = TestClient(api)
+    workspace = MagicMock()
+    workspace.id = uuid.uuid4()
+    admin = MagicMock()
+    admin.relay_role = "admin"
+
+    call_count = 0
+
+    def fake_get_session(workspace_id_arg=None):
+        nonlocal call_count
+
+        @asynccontextmanager
+        async def _cm():
+            nonlocal call_count
+            session = AsyncMock()
+            result = MagicMock()
+            call_count += 1
+            if call_count == 1:
+                result.scalar_one_or_none.return_value = workspace  # workspace by team_id
+            else:
+                result.scalar_one_or_none.return_value = admin  # admin check
+            session.execute = AsyncMock(return_value=result)
+            yield session
+
+        return _cm()
+
+    with (
+        patch("relay.api.main.get_session", side_effect=fake_get_session),
+        patch("relay.api.main.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.token_encryption_key_bytes = b"\xaa" * 32
+        mock_settings.return_value.hubspot_client_id = "client-id"
+        mock_settings.return_value.hubspot_redirect_uri = "https://relay.example.com/hubspot/oauth_redirect"
+
+        response = client.get(
+            "/hubspot/install?team_id=T_TEAM&user_id=U_ADMIN",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    assert response.headers["location"].startswith("https://app.hubspot.com/oauth/authorize?")
+
+
+def test_hubspot_install_browser_path_rejects_non_admin():
+    """Browser-launched install must 403 when the Slack user is not an admin."""
+    from relay.api.main import api
+
+    client = TestClient(api)
+    workspace = MagicMock()
+    workspace.id = uuid.uuid4()
+    member = MagicMock()
+    member.relay_role = "csm"
+
+    call_count = 0
+
+    def fake_get_session(workspace_id_arg=None):
+        nonlocal call_count
+
+        @asynccontextmanager
+        async def _cm():
+            nonlocal call_count
+            session = AsyncMock()
+            result = MagicMock()
+            call_count += 1
+            if call_count == 1:
+                result.scalar_one_or_none.return_value = workspace
+            else:
+                result.scalar_one_or_none.return_value = member
+            session.execute = AsyncMock(return_value=result)
+            yield session
+
+        return _cm()
+
+    with (
+        patch("relay.api.main.get_session", side_effect=fake_get_session),
+        patch("relay.api.main.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.token_encryption_key_bytes = b"\xaa" * 32
+
+        response = client.get(
+            "/hubspot/install?team_id=T_TEAM&user_id=U_MEMBER",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # GDPR erasure + HubSpot OAuth guards
 # ---------------------------------------------------------------------------

@@ -771,14 +771,53 @@ async def erase_user(
     return {"erased": True, "user_id": str(user.id)}
 
 
+async def _admin_workspace_by_slack_ids(team_id: str, user_id: str) -> Workspace:
+    """Resolve a workspace from Slack team/user ids and verify admin role.
+
+    Used for browser-launched OAuth installs (Slack URL buttons can't send an
+    Authorization header), mirroring the Slack Search install flow.
+    """
+    async with get_session() as session:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.slack_team_id == team_id)
+        )
+        workspace = workspace_result.scalar_one_or_none()
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    async with get_session(workspace.id) as session:
+        user_result = await session.execute(
+            select(User).where(
+                User.workspace_id == workspace.id,
+                User.slack_user_id == user_id,
+                User.deleted_at.is_(None),
+            )
+        )
+        user = user_result.scalar_one_or_none()
+    if user is None or user.relay_role != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    return workspace
+
+
 @api.get("/hubspot/install")
 async def hubspot_install(
     req: Request,
     authorization: str = Header(default=""),
+    team_id: str = "",
+    user_id: str = "",
 ):
-    """Redirect a RELAY admin to the HubSpot OAuth authorization page."""
+    """Redirect a RELAY admin to the HubSpot OAuth authorization page.
+
+    Launched from the /relay settings "Connect HubSpot" button, which opens this
+    URL in the browser with ?team_id=&user_id= (no Authorization header is
+    possible from a Slack URL button). Falls back to bearer-token auth for
+    programmatic callers.
+    """
     settings = get_settings()
-    workspace, _slack_user_id = await _authenticated_admin_workspace(authorization)
+    if team_id and user_id:
+        workspace = await _admin_workspace_by_slack_ids(team_id, user_id)
+    else:
+        workspace, _slack_user_id = await _authenticated_admin_workspace(authorization)
 
     requested_workspace_id = req.query_params.get("workspace_id")
     if requested_workspace_id:

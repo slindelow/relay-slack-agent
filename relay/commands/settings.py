@@ -63,7 +63,7 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
         {
             "type": "button",
             "text": {"type": "plain_text", "text": "Connect HubSpot"},
-            "url": f"{status.app_base_url.rstrip('/')}/hubspot/install",
+            "url": _hubspot_connect_url(status),
         },
         {
             "type": "button",
@@ -129,6 +129,23 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     if status.connector_rows:
         blocks.extend(_connector_status_blocks(status.connector_rows))
     return blocks
+
+
+def _hubspot_connect_url(status: SettingsStatus) -> str:
+    """Build the HubSpot OAuth install URL with workspace identity.
+
+    A Slack URL button opens this link in the browser and cannot send an
+    Authorization header, so identity travels as query params — same pattern as
+    the Slack Search connect button. `/hubspot/install` resolves the workspace
+    (and verifies admin) from these before redirecting to HubSpot.
+    """
+    base = status.app_base_url.rstrip("/") or "https://relay.example.com"
+    if not (status.slack_team_id and status.slack_user_id):
+        return f"{base}/hubspot/install"
+    return (
+        f"{base}/hubspot/install"
+        f"?team_id={status.slack_team_id}&user_id={status.slack_user_id}"
+    )
 
 
 def _slack_search_connect_url(status: SettingsStatus) -> str:
