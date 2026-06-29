@@ -9,12 +9,18 @@ from relay.worker.celery_app import celery
 logger = logging.getLogger(__name__)
 
 
+# customer_accounts.arr is Numeric(12, 2): Postgres requires |value| < 10^10.
+# HubSpot sometimes carries placeholder/garbage annualrevenue well above this,
+# which would overflow and roll back the entire sync — so treat it as no ARR.
+_ARR_MAX = 10**10
+
+
 def _parse_arr(value) -> float | None:
     """Parse a HubSpot ``annualrevenue`` property into a float, or None.
 
     HubSpot returns the value as a string (e.g. ``"1500000"``) or null. Any
-    blank or non-numeric value is treated as "no ARR" rather than an error so a
-    single malformed company never fails the whole sync.
+    blank, non-numeric, or out-of-range value is treated as "no ARR" rather than
+    an error so a single malformed company never fails the whole sync.
     """
     if value is None:
         return None
@@ -22,9 +28,13 @@ def _parse_arr(value) -> float | None:
     if not text:
         return None
     try:
-        return float(text)
+        parsed = float(text)
     except (TypeError, ValueError):
         return None
+    if abs(parsed) >= _ARR_MAX:
+        logger.warning("Skipping out-of-range HubSpot annualrevenue: %s", text)
+        return None
+    return parsed
 
 
 @celery.task(bind=True, max_retries=3)

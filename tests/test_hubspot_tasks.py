@@ -166,6 +166,9 @@ async def test_sync_hubspot_accounts_updates_existing_customer_account(db_sessio
         ("", None),
         ("   ", None),
         ("not-a-number", None),
+        ("9999999999.99", 9999999999.99),  # max that fits Numeric(12, 2)
+        ("10000000000", None),  # overflows Numeric(12, 2) → treated as no ARR
+        ("999999999999999", None),  # garbage placeholder
     ],
 )
 def test_parse_arr(value, expected):
