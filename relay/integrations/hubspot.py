@@ -161,29 +161,47 @@ async def fetch_hubspot_companies(
     *,
     client: httpx.AsyncClient | None = None,
     limit: int = 100,
+    max_pages: int = 50,
 ) -> list[dict]:
-    """Fetch company objects from HubSpot CRM API."""
-    params = {
-        "limit": limit,
-        "properties": "name,domain,hs_lead_status,dealtype,createdate,hs_analytics_source,annualrevenue",
-    }
+    """Fetch all company objects from HubSpot CRM API, following pagination.
+
+    HubSpot returns up to ``limit`` (max 100) companies per page plus a
+    ``paging.next.after`` cursor when more remain. We follow the cursor until it
+    is exhausted, so workspaces with more than 100 companies sync fully.
+    ``max_pages`` is a safety cap against an unbounded loop (50 pages = 5000
+    companies at the default page size).
+    """
     headers = {"Authorization": f"Bearer {access_token}"}
     _client = client or httpx.AsyncClient()
+    results: list[dict] = []
+    after: str | None = None
     try:
-        response = await _client.get(
-            HUBSPOT_COMPANIES_URL,
-            params=params,
-            headers=headers,
-        )
+        for _ in range(max_pages):
+            params = {
+                "limit": limit,
+                "properties": "name,domain,hs_lead_status,dealtype,createdate,hs_analytics_source,annualrevenue",
+            }
+            if after:
+                params["after"] = after
+            response = await _client.get(
+                HUBSPOT_COMPANIES_URL,
+                params=params,
+                headers=headers,
+            )
+            if response.status_code != 200:
+                raise HubSpotAPIError(
+                    f"Companies fetch failed: {response.status_code} [body redacted]"
+                )
+            payload = response.json()
+            results.extend(payload.get("results", []))
+            after = (payload.get("paging") or {}).get("next", {}).get("after")
+            if not after:
+                break
     finally:
         if client is None:
             await _client.aclose()
 
-    if response.status_code != 200:
-        raise HubSpotAPIError(
-            f"Companies fetch failed: {response.status_code} [body redacted]"
-        )
-    return response.json().get("results", [])
+    return results
 
 
 async def store_hubspot_connection(

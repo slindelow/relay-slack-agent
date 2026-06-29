@@ -203,6 +203,39 @@ async def test_fetch_companies_raises_on_error():
         await fetch_hubspot_companies(access_token="expired-token", client=client)
 
 
+@pytest.mark.asyncio
+async def test_fetch_companies_follows_pagination():
+    """Workspaces with >100 companies must sync fully via the paging cursor."""
+
+    class PagingClient:
+        def __init__(self, pages: list[FakeResponse]) -> None:
+            self._pages = pages
+            self.gets: list[dict] = []
+
+        async def get(self, url: str, **kwargs) -> FakeResponse:
+            self.gets.append({"url": url, "kwargs": kwargs})
+            return self._pages[len(self.gets) - 1]
+
+    page1 = FakeResponse(
+        200,
+        {
+            "results": [{"id": "1", "properties": {"name": "A"}}],
+            "paging": {"next": {"after": "100"}},
+        },
+    )
+    page2 = FakeResponse(
+        200,
+        {"results": [{"id": "2", "properties": {"name": "B"}}]},  # no paging → last page
+    )
+    client = PagingClient([page1, page2])
+
+    result = await fetch_hubspot_companies(access_token="valid-token", client=client)
+
+    assert [c["id"] for c in result] == ["1", "2"]
+    # Second request must carry the cursor from page 1.
+    assert client.gets[1]["kwargs"]["params"]["after"] == "100"
+
+
 # ---------------------------------------------------------------------------
 # Integration: store_hubspot_connection (skipped automatically when no DB)
 # ---------------------------------------------------------------------------
