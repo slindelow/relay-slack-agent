@@ -172,3 +172,55 @@ def test_parse_arr(value, expected):
     from relay.worker.hubspot_tasks import _parse_arr
 
     assert _parse_arr(value) == expected
+
+
+@pytest.mark.asyncio
+async def test_sync_all_hubspot_accounts_enqueues_each_active_workspace(db_session, relay_settings):
+    from relay.worker.hubspot_tasks import _sync_all_hubspot_accounts_async
+
+    ws1 = await upsert_workspace_from_install(db_session, "T_ALL_1", "All One")
+    ws2 = await upsert_workspace_from_install(db_session, "T_ALL_2", "All Two")
+    await db_session.flush()
+
+    key = get_settings().token_encryption_key_bytes
+    enc, nonce = encrypt_token("tok", key)
+    for ws in (ws1, ws2):
+        db_session.add(
+            CrmConnection(
+                workspace_id=ws.id,
+                crm_provider="hubspot",
+                encrypted_access_token=enc,
+                encrypted_access_token_nonce=nonce,
+                scopes="crm.objects.companies.read",
+            )
+        )
+    # A disconnected connection must be skipped.
+    ws3 = await upsert_workspace_from_install(db_session, "T_ALL_3", "All Three")
+    await db_session.flush()
+    db_session.add(
+        CrmConnection(
+            workspace_id=ws3.id,
+            crm_provider="hubspot",
+            encrypted_access_token=enc,
+            encrypted_access_token_nonce=nonce,
+            scopes="crm.objects.companies.read",
+            disconnected_at=datetime.now(UTC),
+        )
+    )
+    await db_session.flush()
+
+    @asynccontextmanager
+    async def fake_get_session(workspace_id=None):
+        yield db_session
+
+    enqueued: list[str] = []
+    with (
+        patch("relay.db.session.get_session", fake_get_session),
+        patch(
+            "relay.worker.hubspot_tasks.sync_hubspot_accounts.delay",
+            side_effect=lambda ws_id: enqueued.append(ws_id),
+        ),
+    ):
+        await _sync_all_hubspot_accounts_async()
+
+    assert set(enqueued) == {str(ws1.id), str(ws2.id)}

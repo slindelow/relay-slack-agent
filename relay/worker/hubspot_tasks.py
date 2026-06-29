@@ -44,6 +44,36 @@ def sync_hubspot_accounts(self, workspace_id: str) -> None:
         raise self.retry(exc=exc)
 
 
+@celery.task(name="relay.sync_all_hubspot_accounts", bind=True, max_retries=0)
+def sync_all_hubspot_accounts(self) -> None:
+    """Enqueue a HubSpot sync for every workspace with an active connection.
+
+    Run on a schedule so newly added HubSpot companies flow into RELAY without
+    anyone re-connecting from /relay settings.
+    """
+    asyncio.run(_sync_all_hubspot_accounts_async())
+
+
+async def _sync_all_hubspot_accounts_async() -> None:
+    from sqlalchemy import select
+
+    from relay.db.models import CrmConnection
+    from relay.db.session import get_session
+
+    async with get_session() as session:
+        result = await session.execute(
+            select(CrmConnection.workspace_id).where(
+                CrmConnection.crm_provider == "hubspot",
+                CrmConnection.disconnected_at.is_(None),
+            )
+        )
+        workspace_ids = [row.workspace_id for row in result.fetchall()]
+
+    for ws_id in workspace_ids:
+        sync_hubspot_accounts.delay(str(ws_id))
+        logger.info("sync_all_hubspot_accounts: enqueued workspace %s", ws_id)
+
+
 async def _sync_hubspot_accounts_async(workspace_id: str) -> None:
     """Async implementation of HubSpot account sync."""
     from sqlalchemy import select

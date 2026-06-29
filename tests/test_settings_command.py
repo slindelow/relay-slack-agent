@@ -96,6 +96,28 @@ def test_build_settings_blocks_shows_connector_sync_actions():
     assert "relay_sync_connector" in str(blocks)
 
 
+def test_build_settings_blocks_shows_hubspot_sync_when_connected():
+    connected = build_settings_blocks(
+        SettingsStatus(
+            installed=True,
+            admin_count=1,
+            crm_connected=True,
+            app_base_url="https://relay.example.com",
+        )
+    )
+    assert "relay_sync_hubspot" in str(connected)
+
+    not_connected = build_settings_blocks(
+        SettingsStatus(
+            installed=True,
+            admin_count=1,
+            crm_connected=False,
+            app_base_url="https://relay.example.com",
+        )
+    )
+    assert "relay_sync_hubspot" not in str(not_connected)
+
+
 def test_parse_multiline_csv_accepts_commas_and_lines():
     assert _parse_multiline_csv("owner/a, owner/b\nowner/c\n\n") == [
         "owner/a",

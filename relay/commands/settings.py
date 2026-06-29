@@ -65,6 +65,16 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "text": {"type": "plain_text", "text": "Connect HubSpot"},
             "url": _hubspot_connect_url(status),
         },
+        *(
+            [{
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Sync HubSpot"},
+                "action_id": "relay_sync_hubspot",
+                "value": "hubspot",
+            }]
+            if status.crm_connected
+            else []
+        ),
         {
             "type": "button",
             "text": {"type": "plain_text", "text": "Connect GitHub"},
@@ -494,6 +504,20 @@ async def handle_sync_connector(ack, body, respond):
 
     sync_connector.delay(str(workspace.id), str(connector_id))
     await respond(response_type="ephemeral", text="Source sync started.")
+
+
+async def handle_sync_hubspot(ack, body, respond):
+    await ack()
+    team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    user_id = body.get("user", {}).get("id", "")
+    workspace = await _workspace_for_team(team_id)
+    if workspace is None or not await _is_admin(workspace.id, user_id):
+        return
+
+    from relay.worker.hubspot_tasks import sync_hubspot_accounts
+
+    sync_hubspot_accounts.delay(str(workspace.id))
+    await respond(response_type="ephemeral", text="HubSpot sync started.")
 
 
 async def handle_save_github_connector(ack, body):

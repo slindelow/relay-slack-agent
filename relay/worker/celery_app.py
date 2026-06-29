@@ -14,6 +14,7 @@ celery = Celery(
         "relay.worker.connector_tasks",
         "relay.worker.drafting_tasks",
         "relay.worker.deletion_tasks",
+        "relay.worker.hubspot_tasks",
     ],
 )
 
@@ -34,6 +35,10 @@ celery.conf.update(
         },
         "sync-all-connectors-every-6h": {
             "task": "relay.sync_all_connectors",
+            "schedule": 6 * 60 * 60,  # 6 hours in seconds
+        },
+        "sync-all-hubspot-every-6h": {
+            "task": "relay.sync_all_hubspot_accounts",
             "schedule": 6 * 60 * 60,  # 6 hours in seconds
         },
     },
