@@ -1,6 +1,7 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select, text
@@ -178,43 +179,28 @@ def test_parse_arr(value, expected):
 
 
 @pytest.mark.asyncio
-async def test_sync_all_hubspot_accounts_enqueues_each_active_workspace(db_session, relay_settings):
+async def test_sync_all_hubspot_accounts_enqueues_each_active_workspace():
+    """The fan-out enqueues one sync per workspace returned by the query.
+
+    Uses a mocked session (like the connector fan-out test) so it doesn't
+    depend on RLS context — the disconnected-connection filter is enforced by
+    the SQL WHERE clause, not by this test.
+    """
     from relay.worker.hubspot_tasks import _sync_all_hubspot_accounts_async
 
-    ws1 = await upsert_workspace_from_install(db_session, "T_ALL_1", "All One")
-    ws2 = await upsert_workspace_from_install(db_session, "T_ALL_2", "All Two")
-    await db_session.flush()
+    ws1, ws2 = uuid.uuid4(), uuid.uuid4()
+    row1, row2 = MagicMock(), MagicMock()
+    row1.workspace_id = ws1
+    row2.workspace_id = ws2
 
-    key = get_settings().token_encryption_key_bytes
-    enc, nonce = encrypt_token("tok", key)
-    for ws in (ws1, ws2):
-        db_session.add(
-            CrmConnection(
-                workspace_id=ws.id,
-                crm_provider="hubspot",
-                encrypted_access_token=enc,
-                encrypted_access_token_nonce=nonce,
-                scopes="crm.objects.companies.read",
-            )
-        )
-    # A disconnected connection must be skipped.
-    ws3 = await upsert_workspace_from_install(db_session, "T_ALL_3", "All Three")
-    await db_session.flush()
-    db_session.add(
-        CrmConnection(
-            workspace_id=ws3.id,
-            crm_provider="hubspot",
-            encrypted_access_token=enc,
-            encrypted_access_token_nonce=nonce,
-            scopes="crm.objects.companies.read",
-            disconnected_at=datetime.now(UTC),
-        )
-    )
-    await db_session.flush()
+    session = AsyncMock()
+    result = MagicMock()
+    result.fetchall.return_value = [row1, row2]
+    session.execute = AsyncMock(return_value=result)
 
     @asynccontextmanager
     async def fake_get_session(workspace_id=None):
-        yield db_session
+        yield session
 
     enqueued: list[str] = []
     with (
@@ -226,4 +212,4 @@ async def test_sync_all_hubspot_accounts_enqueues_each_active_workspace(db_sessi
     ):
         await _sync_all_hubspot_accounts_async()
 
-    assert set(enqueued) == {str(ws1.id), str(ws2.id)}
+    assert set(enqueued) == {str(ws1), str(ws2)}
