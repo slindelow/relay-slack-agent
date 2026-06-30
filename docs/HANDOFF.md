@@ -97,6 +97,21 @@ The full CSM loop is confirmed working live with polished UX, and HubSpot CRM is
 
 ## Agent Updates
 
+### Claude — 2026-06-30 (GitHub-as-knowledge fix: folder-structure questions)
+Branch: `claude/github-structure-manifest` (PR open — not yet merged). 339 tests pass (was 337), 34 skipped.
+
+Symptom (from a demo dry-run): asking "tell me about the folder structure" from the customer side produced a **low-confidence holding reply** ("let me pull the latest details… get back to you shortly") instead of using GitHub as a knowledge source.
+
+Root cause (not a bug — a coverage gap): the GitHub connector (`relay/connectors/github.py`) only indexed issues, PRs, releases, and an explicit `markdown_paths` allowlist — **never the repo's directory tree**. So a folder-structure question had no document to retrieve. Compounding it, `retrieve()` had **no relevance floor**, so it handed back the nearest weak chunk (a README mention of `docs/`) anyway, and the draft generator correctly hedged (it is *designed* to write a holding reply + `confidence ≤ 0.3` when evidence doesn't answer — `relay/drafting/generator.py`). Working as designed; wrong demo expectation.
+
+Fix (3 commits + docs):
+- `feat(github)` — `_structure_item()` walks the repo git tree (`repo.get_git_tree(default_branch, recursive=True)`) and indexes a synthetic **REPOSITORY STRUCTURE** document, so folder/architecture questions retrieve cleanly for any connected repo (no per-repo config). Defensive: any tree-fetch error just skips the manifest.
+- `feat(retrieval)` — added a configurable cosine-distance **relevance floor** (`retrieval_max_distance`, default 0.75, `None` disables) so genuinely-irrelevant matches report "no sources" instead of anchoring a weak draft. Only numeric distances are filtered (unit tests with mock rows unaffected).
+- `docs(readme)` — added a curated **Repository Layout** section (also a knowledge source if `README.md` is in `markdown_paths`).
+- `docs(demo)` — `DEMO_SCRIPT.md` pre-flight now covers re-syncing the GitHub connector (App Home → **Sync**, or the 6h auto-sync) and Scene 6 can show `/relay ask what is the folder structure of the repo`.
+
+Operational steps before the next recording (live side, not done from here): push/merge this branch to `slindelow/relay-slack-agent` so the README layout + manifest answer exists, then click **Sync** on the GitHub connector in App Home and confirm `/relay ask` returns a cited answer.
+
 ### Claude — 2026-06-30 (Step 8 SLA pulse + demo-ready showcase)
 Branch: `main` (per established operational pattern)
 Status: `/relay pulse <Account>` now lists open questions with time-since-posted; checklist Step 8 code-complete (🟢 READY, awaiting live click-through). 336 tests pass (was 327). CI green; auto-deployed.

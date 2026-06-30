@@ -66,6 +66,27 @@ The core loop works live. Remaining work before broader invited usage is validat
 7. A CSM claims the question, generates a cited draft, reviews it in Slack, and approves.
 8. RELAY posts the approved response as the bot and stores useful resolution memory.
 
+## Repository Layout
+
+Top-level structure of this repository:
+
+| Path | What lives here |
+|------|-----------------|
+| `relay/` | The application package. |
+| `relay/api/` | FastAPI routes and the HTTP surface. |
+| `relay/slack/` | Slack Bolt event handlers, commands, and interactive UI. |
+| `relay/connectors/` | Knowledge-source connectors (GitHub, Google Drive), chunking, embeddings, and semantic retrieval. |
+| `relay/context/` | Evidence assembly and the MCP context server. |
+| `relay/drafting/` | Cited draft generation, evidence bundling, and resolution memory. |
+| `relay/question/`, `relay/sla/` | Question lifecycle and SLA tracking. |
+| `relay/worker/` | Celery tasks (classification, drafting, sync). |
+| `relay/db/` | SQLAlchemy models and session/RLS plumbing. |
+| `classifier/` | Message classification logic and evaluation harness. |
+| `alembic/` | Database migrations. |
+| `docs/` | Architecture notes, runbooks, and the private-beta launch docs (including `docs/deployment/`). |
+| `scripts/` | Operational and development scripts. |
+| `tests/` | The pytest suite. |
+
 ## Tech Stack
 
 | Layer | Technology |

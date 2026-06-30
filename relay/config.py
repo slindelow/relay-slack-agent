@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     voyage_api_key: str = ""
     openai_api_key: str = ""
 
+    # Semantic retrieval: drop chunks whose pgvector cosine distance (0=identical,
+    # 1=orthogonal, 2=opposite) exceeds this floor so genuinely-irrelevant matches
+    # report "no sources" instead of anchoring a weak draft. Set None to disable.
+    retrieval_max_distance: float | None = Field(default=0.75, ge=0.0, le=2.0)
+
     # Connector credentials (dev/test fallbacks)
     google_drive_credentials_json: str = ""
     github_token: str = ""

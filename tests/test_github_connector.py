@@ -71,6 +71,18 @@ def _mock_release(release_id: int, tag: str) -> MagicMock:
     return rel
 
 
+def _mock_tree_element(path: str, type_: str) -> MagicMock:
+    el = MagicMock()
+    el.path = path
+    el.type = type_  # "tree" for directories, "blob" for files
+    return el
+
+
+def _empty_tree() -> MagicMock:
+    """A git tree with no entries — yields no structure document."""
+    return MagicMock(tree=[])
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -90,6 +102,7 @@ async def test_sync_creates_rows_for_issues_prs_releases():
     repo.get_issues.return_value = [issue][:200]
     repo.get_pulls.return_value = [pr][:200]
     repo.get_releases.return_value = [release][:50]
+    repo.get_git_tree.return_value = _empty_tree()
 
     md_file = MagicMock()
     md_file.decoded_content = b"# Changelog\nSome content"
@@ -130,6 +143,67 @@ async def test_sync_creates_rows_for_issues_prs_releases():
 
 
 @pytest.mark.asyncio
+async def test_sync_indexes_repository_structure():
+    """The connector synthesizes a document describing the repo's folder layout so
+    that "what's the folder structure" questions have something to retrieve."""
+    workspace_id = uuid.uuid4()
+    connector_id = uuid.uuid4()
+    connector_row, key = _make_connector_row(connector_id, workspace_id)
+    connector_row.config = {"repo_list": ["owner/repo"], "markdown_paths": []}
+
+    repo = MagicMock()
+    repo.get_issues.return_value = []
+    repo.get_pulls.return_value = []
+    repo.get_releases.return_value = []
+    repo.html_url = "https://github.com/owner/repo"
+    repo.default_branch = "main"
+    repo.get_git_tree.return_value = MagicMock(
+        tree=[
+            _mock_tree_element("relay", "tree"),
+            _mock_tree_element("relay/connectors", "tree"),
+            _mock_tree_element("docs", "tree"),
+            _mock_tree_element("docs/deployment", "tree"),
+            _mock_tree_element("README.md", "blob"),
+            _mock_tree_element("relay/connectors/github.py", "blob"),
+        ]
+    )
+
+    gh_client = MagicMock()
+    gh_client.get_repo.return_value = repo
+
+    session = AsyncMock()
+    session.add = MagicMock()
+    connector_result = MagicMock()
+    connector_result.scalar_one_or_none.return_value = connector_row
+    no_doc = MagicMock()
+    no_doc.scalar_one_or_none.return_value = None
+    session.execute = AsyncMock(side_effect=[connector_result, no_doc])
+    session.flush = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("relay.connectors.github.get_session", return_value=ctx),
+        patch("relay.connectors.github.get_settings") as mock_settings,
+        patch("relay.connectors.github.Github", return_value=gh_client),
+        patch("relay.connectors.github.embed_chunks", new=AsyncMock(return_value=[])) as mock_embed,
+    ):
+        mock_settings.return_value.token_encryption_key_bytes = key
+        mock_settings.return_value.github_token = ""
+        await GitHubConnector().sync(workspace_id, connector_id)
+
+    # Exactly one document indexed: the structure manifest.
+    assert session.add.call_count == 1
+    embedded_chunks = mock_embed.await_args.kwargs["chunks"]
+    embedded_text = "\n".join(embedded_chunks)
+    assert "relay" in embedded_text
+    assert "docs" in embedded_text
+    assert "docs/deployment" in embedded_text
+
+
+@pytest.mark.asyncio
 async def test_sync_skips_unchanged_hash():
     workspace_id = uuid.uuid4()
     connector_id = uuid.uuid4()
@@ -143,6 +217,7 @@ async def test_sync_skips_unchanged_hash():
     repo.get_issues.return_value = [issue]
     repo.get_pulls.return_value = []
     repo.get_releases.return_value = []
+    repo.get_git_tree.return_value = _empty_tree()
     repo.get_contents.side_effect = Exception("not found")
 
     gh_client = MagicMock()
