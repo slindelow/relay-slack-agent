@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import desc, func, select
@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from relay.db.models import CustomerAccount, ImpactMetric, Question, QuestionState, User, Workspace
 from relay.db.session import get_session
-from relay.utils.formatting import renewal_proximity
+from relay.utils.formatting import format_age, renewal_proximity
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +24,22 @@ _OPEN_STATES = {
 
 
 @dataclass
+class OpenQuestion:
+    excerpt: str
+    age: str
+    urgency: str
+
+
+@dataclass
 class AccountPulse:
     account: CustomerAccount
     open_count: int
     sla_rate: str = "n/a"
     last_resolved: str = "N/A"
+    open_questions: list[OpenQuestion] = field(default_factory=list)
+
+
+_URGENCY_ICON = {"critical": "🔴", "high": "🟠", "normal": "🟡", "low": "⚪️"}
 
 
 def _parse_pulse_query(text: str) -> str:
@@ -95,9 +106,22 @@ def _summary_blocks(pulses: list[AccountPulse]) -> list[dict]:
     return blocks
 
 
+def _open_questions_block(pulse: AccountPulse) -> dict | None:
+    if not pulse.open_questions:
+        return None
+    lines = []
+    for question in pulse.open_questions:
+        icon = _URGENCY_ICON.get(question.urgency, "🟡")
+        lines.append(f"{icon} _{question.excerpt}_ · waiting *{question.age}*")
+    return {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "*Open questions*\n" + "\n".join(lines)},
+    }
+
+
 def _detail_blocks(pulse: AccountPulse) -> list[dict]:
     account = pulse.account
-    return [
+    blocks = [
         {"type": "section", "text": {"type": "mrkdwn", "text": f"*Account Pulse: {account.name}*"}},
         {
             "type": "section",
@@ -112,6 +136,10 @@ def _detail_blocks(pulse: AccountPulse) -> list[dict]:
             ],
         },
     ]
+    open_block = _open_questions_block(pulse)
+    if open_block is not None:
+        blocks.append(open_block)
+    return blocks
 
 
 async def _workspace_for_team(slack_team_id: str) -> Workspace | None:
@@ -171,15 +199,25 @@ async def _account_detail_pulse(workspace_id: uuid.UUID, session, query: str) ->
         return None
 
     open_result = await session.execute(
-        select(func.count())
-        .select_from(Question)
+        select(Question.title_excerpt, Question.urgency, Question.created_at)
         .where(
             Question.workspace_id == workspace_id,
             Question.account_id == account.id,
             Question.state.in_(_OPEN_STATES),
         )
+        .order_by(Question.created_at.asc())
     )
-    open_count = open_result.scalar_one()
+    open_rows = open_result.all()
+    open_count = len(open_rows)
+    now = datetime.now(UTC)
+    open_questions = [
+        OpenQuestion(
+            excerpt=(row.title_excerpt or "(no excerpt)")[:120],
+            age=format_age(row.created_at, now=now),
+            urgency=row.urgency or "normal",
+        )
+        for row in open_rows[:10]
+    ]
 
     metric_result = await session.execute(
         select(ImpactMetric).where(
@@ -209,6 +247,7 @@ async def _account_detail_pulse(workspace_id: uuid.UUID, session, query: str) ->
         open_count=open_count,
         sla_rate=_sla_rate(metrics),
         last_resolved=last_resolved,
+        open_questions=open_questions,
     )
 
 

@@ -2,7 +2,38 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
+
+
+def format_age(since: datetime | None, *, now: datetime | None = None) -> str:
+    """Return a compact human-readable age, e.g. ``"just now"``, ``"14m"``,
+    ``"2h 14m"``, ``"3d 2h"``.
+
+    ``since`` is treated as UTC when it is naive. Returns ``"unknown"`` when the
+    value is absent.
+    """
+    if since is None:
+        return "unknown"
+    if since.tzinfo is None:
+        since = since.replace(tzinfo=UTC)
+    reference = now or datetime.now(UTC)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=UTC)
+
+    total_seconds = int((reference - since).total_seconds())
+    if total_seconds < 60:
+        return "just now"
+
+    minutes = total_seconds // 60
+    if minutes < 60:
+        return f"{minutes}m"
+
+    hours, rem_minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {rem_minutes}m" if rem_minutes else f"{hours}h"
+
+    days, rem_hours = divmod(hours, 24)
+    return f"{days}d {rem_hours}h" if rem_hours else f"{days}d"
 
 
 def renewal_proximity(renewal_date: date | str | None) -> str:

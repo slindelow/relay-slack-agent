@@ -9,6 +9,7 @@ import pytest
 
 from relay.commands.pulse import (
     AccountPulse,
+    OpenQuestion,
     _detail_blocks,
     _parse_pulse_query,
     _summary_blocks,
@@ -77,6 +78,32 @@ def test_detail_blocks_show_account_pulse():
     assert "75.0%" in text
     assert "2026-06-05" in text
     assert "backup: Lee" in text
+
+
+def test_detail_blocks_list_open_questions_with_age():
+    pulse = AccountPulse(
+        account=_account(),
+        open_count=2,
+        open_questions=[
+            OpenQuestion(excerpt="When does my contract renew?", age="2h 14m", urgency="high"),
+            OpenQuestion(excerpt="Is SSO included in enterprise?", age="just now", urgency="normal"),
+        ],
+    )
+
+    blocks = _detail_blocks(pulse)
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+
+    assert "When does my contract renew?" in text
+    assert "waiting *2h 14m*" in text
+    assert "Is SSO included in enterprise?" in text
+
+
+def test_detail_blocks_omit_open_questions_section_when_empty():
+    pulse = AccountPulse(account=_account(), open_count=0, open_questions=[])
+
+    blocks = _detail_blocks(pulse)
+    # Only the header + fields block, no trailing open-questions list section.
+    assert len(blocks) == 2
 
 
 @pytest.mark.asyncio
