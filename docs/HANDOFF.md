@@ -97,6 +97,18 @@ The full CSM loop is confirmed working live with polished UX, and HubSpot CRM is
 
 ## Agent Updates
 
+### Claude — 2026-06-30 (Step 8 SLA pulse + demo-ready showcase)
+Branch: `main` (per established operational pattern)
+Status: `/relay pulse <Account>` now lists open questions with time-since-posted; checklist Step 8 code-complete (🟢 READY, awaiting live click-through). 336 tests pass (was 327). CI green; auto-deployed.
+
+Goal: get Step 8 verifiable and the project demo-ready for recording + submission.
+- `92be8ae` `feat(pulse)` — the pulse detail view only showed an open-question **count**, but Step 8 requires showing **the open question with time-since-posted**. Added a `format_age` helper (`relay/utils/formatting.py` → "just now" / "14m" / "2h 14m" / "3d 2h") and made `_account_detail_pulse` fetch the actual open questions (oldest first, capped at 10) instead of a bare count. `_detail_blocks` now renders an **Open questions** section, each line `<urgency dot> _excerpt_ · waiting *<age>*`. This is both the Step 8 requirement and a strong demo visual (shows the account's value + how long each question has waited at a glance).
+- `1fb17c0` `docs` — added `docs/DEMO_SCRIPT.md`: a 2–3 min full-loop recording walkthrough (pre-flight → customer question → DM alert → pulse → claim → cited draft → approve/send → ask) plus the explicit Step 8 verification recipe. Marked checklist Step 8 🟢 READY.
+
+SLA timing confirmed by construction (no code change needed): a fresh `Question` is created with `next_alert_at=NULL`, so the first poll cycle (≤60s) sends the Step 7 alert and then schedules the next alert 240 min out (escalation window). No premature breach alert can fire in the 2-minute Step 8 window. Defaults live in `relay/sla/poller.py` (response 60 min / escalation 240 min), overridable per-account via an `SlaPolicy` row.
+
+Remaining for submission (user-driven, all live Slack interaction): record the demo (script ready), then run the destructive Steps 13 (delete-workspace-data) + 14 (uninstall) **last**, and finish the Devpost writeup. Optional: reinstall the Slack app to grant `chat:write.customize` so Send posts as the CSM.
+
 ### Claude — 2026-06-29/30 (HubSpot CRM live end-to-end + CI/auto-deploy fixes)
 Branch: `main` (operational fixes, per established pattern)
 Status: HubSpot connect → sync → `/relay pulse` ARR confirmed live (ARR $250 on "Lindelow Partners"). Checklist Steps 4, 6, 12 → ✅ PASS (11/14). CI green; Railway auto-deploy fixed and verified for both services. 326 tests pass.
