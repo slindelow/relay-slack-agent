@@ -58,8 +58,71 @@ def _item_config(item_type: str, item, updated_at: datetime | None) -> dict:
     }
 
 
+def _structure_item(repo, repo_name: str) -> _SourceItem | None:
+    """Synthesize a document describing the repo's directory layout.
+
+    Folder/architecture questions ("what's the folder setup?") have no issue, PR,
+    or release to match against, so without this the knowledge base has nothing to
+    retrieve and the draft falls back to a low-confidence holding reply. We index
+    the repository tree itself as a first-class document so those questions land.
+    """
+    try:
+        tree = repo.get_git_tree(repo.default_branch, recursive=True)
+        elements = list(getattr(tree, "tree", []) or [])
+    except Exception:
+        return None
+
+    dirs: list[str] = []
+    files: list[str] = []
+    for element in elements:
+        path = getattr(element, "path", None)
+        if not path:
+            continue
+        if getattr(element, "type", None) == "tree":
+            dirs.append(path)
+        else:
+            files.append(path)
+
+    if not dirs and not files:
+        return None
+
+    dirs.sort()
+    top_level = sorted({path.split("/")[0] for path in dirs + files})
+    repo_url = getattr(repo, "html_url", None) or f"https://github.com/{repo_name}"
+
+    lines = [
+        f"REPOSITORY STRUCTURE for {repo_name}",
+        "",
+        "This document describes the folder and file layout of the repository.",
+        "",
+        "Top-level entries:",
+        *[f"- {name}" for name in top_level],
+    ]
+    if dirs:
+        lines += ["", "All directories:", *[f"- {d}/" for d in dirs]]
+
+    return _SourceItem(
+        external_id=f"{repo_name}:structure",
+        title=f"{repo_name} repository structure",
+        url=repo_url,
+        content="\n".join(lines),
+        provider_updated_at=None,
+        config={
+            "type": "structure",
+            "status": None,
+            "labels": [],
+            "url": repo_url,
+            "updated_at": None,
+        },
+    )
+
+
 def _github_items(repo, repo_name: str, markdown_paths: Iterable[str]) -> list[_SourceItem]:
     items: list[_SourceItem] = []
+
+    structure = _structure_item(repo, repo_name)
+    if structure is not None:
+        items.append(structure)
 
     for issue in list(repo.get_issues(state="all"))[:200]:
         if getattr(issue, "pull_request", None):
