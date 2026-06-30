@@ -27,6 +27,21 @@ Record in the "RELAY Beta" Slack workspace against the live Railway deploy
 5. **Reinstall the Slack app** if you want **Send** to post as the CSM's name +
    avatar (grants `chat:write.customize`). If you skip this, Send still works —
    it posts a clean plain message with no RELAY branding.
+6. **GitHub knowledge is fresh** — needed for the folder-structure / architecture
+   demo questions. The GitHub connector now indexes a repository-structure
+   manifest (the folder tree) in addition to issues/PRs/releases, so "what's the
+   folder setup?" retrieves a real source instead of falling back to a low-
+   confidence holding reply.
+   - Make sure the answer exists in the synced repo: this branch adds a
+     **"Repository Layout"** section to `README.md`. Merge/push it to
+     `slindelow/relay-slack-agent` before recording. (Optional: add `README.md`
+     to the connector's `markdown_paths` for the richer prose answer.)
+   - **Re-sync the connector** so the new structure document gets embedded: open
+     **RELAY → App Home** (or `/relay settings`) and click **Sync** on the GitHub
+     connector. This enqueues the `relay.sync_connector` Celery task; connectors
+     also auto-sync every 6h. Give it ~30s, then confirm with
+     `/relay ask what is the folder structure of the repo` — you should get a
+     cited, confident answer.
 
 ---
 
@@ -71,11 +86,16 @@ customer without human approval. Approve, and RELAY posts it and remembers the
 resolution for next time."*
 
 **Scene 6 — Knowledge recall (15s, optional).**
-Run:
+Run either:
 ```
 /relay ask refund policy
 ```
-Show a cited answer pulled from the indexed GitHub knowledge. Voiceover:
+or, to show GitHub as a live knowledge source:
+```
+/relay ask what is the folder structure of the repo
+```
+Show a cited answer pulled from the indexed GitHub knowledge (the folder-structure
+question now retrieves the repository-structure manifest). Voiceover:
 *"RELAY also answers internal questions from your connected knowledge sources."*
 
 **Close (10s).**
