@@ -111,6 +111,59 @@ async def test_retrieve_empty_results():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_filters_chunks_beyond_distance_floor():
+    """Chunks whose cosine distance exceeds retrieval_max_distance are dropped so
+    irrelevant matches don't anchor a weak draft."""
+    workspace_id = uuid.uuid4()
+
+    near = _make_chunk_row(workspace_id)
+    near.distance = 0.2  # relevant
+    far = _make_chunk_row(workspace_id)
+    far.distance = 1.4  # irrelevant — beyond the floor
+
+    query_result = MagicMock()
+    query_result.fetchall.return_value = [near, far]
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.execute = AsyncMock(return_value=query_result)
+
+    with (
+        patch("relay.connectors.retrieval._get_embeddings", new=AsyncMock(return_value=[FAKE_VECTOR])),
+        patch("relay.connectors.retrieval.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.retrieval_max_distance = 0.75
+        results = await retrieve(workspace_id, "folder structure?", session)
+
+    assert [r.chunk_id for r in results] == [near.id]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_distance_floor_disabled_keeps_all():
+    """When retrieval_max_distance is None, no distance filtering occurs."""
+    workspace_id = uuid.uuid4()
+
+    near = _make_chunk_row(workspace_id)
+    near.distance = 0.2
+    far = _make_chunk_row(workspace_id)
+    far.distance = 1.9
+
+    query_result = MagicMock()
+    query_result.fetchall.return_value = [near, far]
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.execute = AsyncMock(return_value=query_result)
+
+    with (
+        patch("relay.connectors.retrieval._get_embeddings", new=AsyncMock(return_value=[FAKE_VECTOR])),
+        patch("relay.connectors.retrieval.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value.retrieval_max_distance = None
+        results = await retrieve(workspace_id, "folder structure?", session)
+
+    assert {r.chunk_id for r in results} == {near.id, far.id}
+
+
+@pytest.mark.asyncio
 async def test_retrieve_rejects_empty_query():
     with pytest.raises(ValueError, match="query"):
         await retrieve(uuid.uuid4(), "   ", AsyncMock())

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from relay.config import get_settings
 from relay.connectors.embeddings import _get_embeddings
 from relay.db.models import KnowledgeEntry, RetrievalLog
 
@@ -52,7 +53,8 @@ async def retrieve(
     # Parameterise the vector as a cast to avoid dialect serialisation issues
     sql = text(
         """
-        SELECT id, source_document_id, knowledge_entry_id, content, embedding_model, embedding_dims
+        SELECT id, source_document_id, knowledge_entry_id, content, embedding_model, embedding_dims,
+               embedding <=> CAST(:qvec AS vector) AS distance
         FROM knowledge_chunks
         WHERE workspace_id = :wid
         ORDER BY
@@ -71,6 +73,19 @@ async def retrieve(
         },
     )
     rows = result.fetchall()
+
+    # Relevance floor: drop chunks whose cosine distance exceeds the configured
+    # threshold so genuinely-irrelevant matches report "no sources" rather than
+    # anchoring a weak draft. A real pgvector query returns a float distance; in
+    # unit tests rows may lack one, so only a numeric distance is ever filtered.
+    max_distance = get_settings().retrieval_max_distance
+    if max_distance is not None:
+        rows = [
+            row
+            for row in rows
+            if not isinstance(getattr(row, "distance", None), (int, float))
+            or getattr(row, "distance") <= max_distance
+        ]
 
     entry_ids = {row.knowledge_entry_id for row in rows if row.knowledge_entry_id is not None}
     entries_by_id: dict[uuid.UUID, KnowledgeEntry] = {}
