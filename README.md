@@ -38,10 +38,10 @@ For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/
 
 The core loop works live. Remaining work before broader invited usage is validation and polish:
 
-- **Finish remaining live validation** — HubSpot, setup-complete state, SLA timer, account pulse ARR, workspace deletion, and uninstall remain pending in `docs/deployment/beta-validation-checklist.md`.
+- **Finish remaining live validation** — 11/14 checklist steps pass; only **8 SLA timer**, **13 workspace deletion**, and **14 uninstall** remain (`docs/deployment/beta-validation-checklist.md`). HubSpot CRM, setup-complete state, and account-pulse ARR are now ✅ live.
 - **Refresh Slack app config on each reinstall** — run `scripts/configure-manifest.sh $APP_BASE_URL` and upload the generated manifest so Messages Tab, channel events, OAuth redirects, and scopes stay aligned.
 - **Run beta preflight/smokes after deploys** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta --live` and `.venv/bin/python scripts/smoke_kms.py`.
-- **Keep HubSpot optional for core demos** — CRM-backed ARR and setup completion need HubSpot env vars/OAuth; GitHub-backed evidence and `/relay ask` already work.
+- **HubSpot CRM is live** — `HUBSPOT_CLIENT_ID/SECRET/REDIRECT_URI` are set on Railway and `/relay pulse` shows ARR from the synced CRM. The app is a HubSpot **public (OAuth)** app created via `hs project create` (legacy public-app creation is disabled in the UI), and the developer Acceptable Use Policy must be signed before installs work.
 
 ## Private Beta Launch Docs
 

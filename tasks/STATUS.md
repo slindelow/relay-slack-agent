@@ -4,13 +4,15 @@
 
 ---
 
-## 🟢 Live Beta Validation (2026-06-24)
+## 🟢 Live Beta Validation (2026-06-29 — 11/14 PASS)
 
-Core product loop **validated end-to-end** in the live "RELAY Beta" Slack Connect workspace on Railway. 8/14 checklist steps PASS (1,2,3,5,7,9,10,11). Full chain works: customer question → classify → SLA DM alert → claim → **MCP-powered cited draft (Sonnet 4.6)** → review modal → bot posts approved response → resolved; `/relay ask` returns cited results from an indexed GitHub source.
+Core product loop **validated end-to-end** in the live "RELAY Beta" Slack Connect workspace on Railway. **11/14 checklist steps PASS** (1,2,3,4,5,6,7,9,10,11,12). Full chain works: customer question → classify → SLA DM alert → claim → **MCP-powered cited draft (Sonnet 4.6)** → review modal → bot posts approved response → resolved; `/relay ask` returns cited results; **HubSpot CRM connected → company sync → `/relay pulse <account>` shows ARR** (confirmed: Lindelow Partners → ARR $250). Remaining: 8 SLA timer, 13 delete, 14 uninstall (housekeeping).
+
+**2026-06-29 — HubSpot CRM live + CI/auto-deploy fixed.** Took HubSpot from deferred to fully working, fixing four bugs (`42ae732` ARR mapping, `1fb9cb3` connect button identity, `c15a275` >100-company pagination, `b121a34` `Numeric(12,2)` overflow guard) plus a manual Sync button + 6h auto-sync (`0f15f5f`). Fixed CI (`ad9f71e` — an RLS-unsafe test was red, blocking CI-gated deploys) and **Railway auto-deploy** (neither service's Source-branch trigger was set to `main`); a single push to `main` now auto-deploys both `web` and `worker` (verified). 326 tests pass.
 
 Six live bugs fixed this session (all on `main`): channel-mention parser (`1c27eeb`), worker async event-loop/NullPool (`cc3f63d`), embedding dims 1024 (`0772760`), retired model IDs (`d5bf4a6`), App Home draft-review surfacing (`f1152d9`), draft-modal button style (`36bb082`). Plus Slack app config (escape/interactivity/events/scope/messages-tab) and Voyage payment method. See `docs/HANDOFF.md` 2026-06-24 entry and `docs/deployment/beta-validation-checklist.md` for details.
 
-Follow-up audit on 2026-06-25 fixed the highest-value beta polish items in code/docs: customer-facing approved-response copy no longer exposes raw Slack IDs or approval workflow language, `slack-app-manifest.yaml` now matches the live Slack config, and Railway exports `PYTHONPATH=/app` from `scripts/entrypoint.sh`. Remaining checklist: 4 HubSpot (deferred), 6 setup-complete (3/4 until HubSpot), 8 SLA timer, 12 pulse ARR (needs HubSpot), 13 delete, 14 uninstall.
+Follow-up audit on 2026-06-25 fixed the highest-value beta polish items in code/docs: customer-facing approved-response copy no longer exposes raw Slack IDs or approval workflow language, `slack-app-manifest.yaml` now matches the live Slack config, and Railway exports `PYTHONPATH=/app` from `scripts/entrypoint.sh`. (HubSpot steps 4/6/12 since completed — see the 2026-06-29 update above.) Remaining checklist: 8 SLA timer, 13 delete, 14 uninstall.
 
 ---
 
@@ -71,6 +73,8 @@ Marketplace submission package
 
 ## Known TODOs (non-blocking)
 
+- (Optional polish) Add a HubSpot **"Status: synced · Last synced …"** line to `/relay settings` for parity with GitHub connectors (`CrmConnection.last_synced_at` is already stored; only the ✅ shows today).
+- (Optional) Expose `RAILWAY_GIT_COMMIT_SHA` in `/health` — currently returns `git_sha: "unknown"`, which made the auto-deploy debug slower.
 - (Optional) Send via the CSM's **user token** so the residual "APP" badge disappears (current Send posts as the CSM's name/avatar via `chat:write.customize`, which leaves a small APP tag).
 - Reinstall the Slack app to grant `chat:write.customize` (until then Send falls back to a clean plain bot post).
 - Redis dedup on ingestion (idempotency key check before classify) — in `relay/worker/tasks.py` — next Codex task on `codex/mcp-rts-beta-foundation`

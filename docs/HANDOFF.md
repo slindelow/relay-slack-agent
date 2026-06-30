@@ -40,8 +40,8 @@ All env vars set on Railway (stored in Railway secrets, not in code):
 - `VOYAGE_API_KEY` — set on `web` + `worker` (knowledge search / draft evidence). NOTE: Voyage account now has a **payment method** added to lift the free-tier 3 RPM rate limit (200M free tokens still apply, so effectively $0).
 - `PYTHONPATH=/app` is now exported by `scripts/entrypoint.sh` (2026-06-25), so the worker no longer depends on a manual Railway var for the top-level `classifier` package.
 
-**NOT YET SET** (HubSpot path deferred — optional for core demo):
-- `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` — needed for CRM sync (Steps 4 & 12 ARR figures)
+**HubSpot (SET 2026-06-29 — CRM sync is LIVE):**
+- `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` set on `web` + `worker`. The app is a HubSpot **public (OAuth)** app created via `hs project create` (legacy public-app creation is disabled in the UI — strip the template's example features to an OAuth-only app before `hs project upload`). The developer **Acceptable Use Policy must be signed** before installs work. NOTE: the env var is `HUBSPOT_REDIRECT_URI` (not `_URL`); value `https://web-production-acd3.up.railway.app/hubspot/oauth_redirect`.
 
 ## Slack App Config Required (one-time, done this session)
 These manifest defaults shipped with placeholder URLs / disabled features and had to be set in the live Slack app (api.slack.com/apps → RELAY). **The repo manifest `slack-app-manifest.yaml` was synced on 2026-06-25; continue generating deploy-specific URLs with `scripts/configure-manifest.sh`:**
@@ -53,26 +53,24 @@ These manifest defaults shipped with placeholder URLs / disabled features and ha
 
 ## Beta Validation Status (see `docs/deployment/beta-validation-checklist.md`)
 
-**PASSED (8/14):** 1 Install · 2 App Home · 3 Register channel · 5 Knowledge source (GitHub synced) · 7 Question→classify→alert · 9 Claim→draft (MCP) · 10 Send (as CSM, no RELAY branding) · 11 `/relay ask` (cited results)
+**PASSED (11/14):** 1 Install · 2 App Home · 3 Register channel · 4 HubSpot connected · 5 Knowledge source (GitHub synced) · 6 Setup complete · 7 Question→classify→alert · 9 Claim→draft (MCP) · 10 Send (as CSM, no RELAY branding) · 11 `/relay ask` (cited results) · 12 Account pulse (ARR from HubSpot)
 
-The full CSM loop is confirmed working live with polished UX (2026-06-25): claim auto-generates a draft → review in App Home → send appears to the customer as the CSM with zero RELAY branding; drafts are always sendable (safe holding reply when evidence is thin).
+The full CSM loop is confirmed working live with polished UX, and HubSpot CRM is now live end-to-end (2026-06-29): connect from `/relay settings` → company sync (paginated, all companies) → `/relay pulse <account>` shows ARR. Confirmed live: `/relay pulse Lindelow Partners` → ARR $250.
 
 **Remaining:**
-- **4 — HubSpot** (deferred): set `HUBSPOT_*` env vars + OAuth. Optional for core demo.
-- **6 — Setup complete**: will read 3/4 until HubSpot connected.
 - **8 — SLA timer**: quick to verify (`/relay pulse` time-since; no premature breach).
-- **12 — Account pulse**: works (`/relay pulse TestCo` renders); ARR figure needs HubSpot.
-- **13 — Delete workspace data** & **14 — Uninstall**: housekeeping, not yet run.
+- **13 — Delete workspace data** & **14 — Uninstall**: housekeeping (destructive — run last, after any demo recording, ideally on a throwaway workspace).
 
 ## Top Next Actions
-1. Finish remaining beta checklist items: **8 SLA timer**, **13 workspace deletion**, **14 uninstall** (housekeeping); optional **4 HubSpot** + **6 setup-complete** + **12 pulse ARR**.
-2. Reinstall the Slack app so the new `chat:write.customize` scope is granted (lets Send post as the CSM's name/avatar). Until then Send falls back to a plain bot post (still no RELAY wording).
-3. (Optional) Upgrade Send to post via the CSM's **user token** so the residual "APP" badge disappears entirely (Option B — needs per-CSM token OAuth, similar to the Slack Search connect flow).
-4. (Optional) Build full OAuth-based connector onboarding beyond the admin-token beta setup.
+1. Finish remaining beta checklist items: **8 SLA timer** (quick), then the destructive **13 workspace deletion** + **14 uninstall** (run last, after any demo recording).
+2. Reinstall the Slack app so the `chat:write.customize` scope is granted (lets Send post as the CSM's name/avatar). Until then Send falls back to a plain bot post (still no RELAY wording).
+3. (Optional polish) Add a HubSpot "Status: synced · Last synced …" line to `/relay settings` for parity with GitHub (`CrmConnection.last_synced_at` is already stored); expose `RAILWAY_GIT_COMMIT_SHA` in `/health` (currently `git_sha: "unknown"`).
+4. (Optional) Upgrade Send to post via the CSM's **user token** to drop the residual "APP" badge; build full OAuth-based connector onboarding beyond the admin-token beta setup.
 5. Record the demo video and finish the Devpost submission.
 
 ## Known Issues
 - *(None blocking.)* Earlier worker `Event loop is closed` noise was removed by dropping the worker→Slack DM (drafts surface in App Home instead).
+- *(Resolved 2026-06-30)* **Railway auto-deploy was silently broken.** Two causes: (1) CI was red — a fan-out test inserted `crm_connections` without RLS context, which only fails under CI's RLS-enforced Postgres — and CI-gated deploys won't ship on red CI; (2) neither service's **Source → Branch** trigger was set to `main`, so pushes never triggered a build. Both fixed; `push to main → CI green → web+worker auto-deploy` is verified. If pushes ever stop deploying, check (a) CI is green and (b) each service's **Settings → Source → Branch = `main`**.
 
 ## Slack App Config
 - **App name:** RELAY
@@ -98,6 +96,22 @@ The full CSM loop is confirmed working live with polished UX (2026-06-25): claim
 - Commit incrementally — after each completed file or logical chunk.
 
 ## Agent Updates
+
+### Claude — 2026-06-29/30 (HubSpot CRM live end-to-end + CI/auto-deploy fixes)
+Branch: `main` (operational fixes, per established pattern)
+Status: HubSpot connect → sync → `/relay pulse` ARR confirmed live (ARR $250 on "Lindelow Partners"). Checklist Steps 4, 6, 12 → ✅ PASS (11/14). CI green; Railway auto-deploy fixed and verified for both services. 326 tests pass.
+
+Drove the HubSpot path from "deferred" to fully working live, fixing four real bugs any tester would hit, then fixed the CI + deploy pipeline that was masking it. Commits on `main`:
+- `42ae732` `feat(hubspot)` — map HubSpot `annualrevenue` → `CustomerAccount.arr` (fetch requests the property; `_parse_arr` parses defensively). Without this, `/relay pulse` ARR was always blank.
+- `1fb9cb3` `fix(hubspot)` — the `/relay settings` **Connect HubSpot** button was a bare URL hitting an endpoint that requires an `Authorization: Bearer` header (impossible from a Slack URL button → "missing bearer token"). Now carries `team_id/user_id` query params and `/hubspot/install` resolves the workspace + verifies admin from them (mirrors the Slack Search install flow).
+- `c15a275` `fix(hubspot)` — paginate the company fetch (`paging.next.after`) so workspaces with >100 companies sync fully (was capped at 100 → accounts beyond it returned "Account not found").
+- `b121a34` `fix(hubspot)` — guard ARR against `Numeric(12,2)` overflow. Two companies had placeholder `annualrevenue` ($134B/$403B) that raised `NumericValueOutOfRangeError` and rolled back the entire all-or-nothing sync, so nothing persisted. `_parse_arr` now drops values ≥ 10^10.
+- `0f15f5f` `feat(hubspot)` — manual **Sync HubSpot** button in `/relay settings` (shown when connected) + `sync_all_hubspot_accounts` beat task (every 6h) so new HubSpot companies flow in without reconnecting.
+- `ad9f71e` `test(hubspot)` — **the CI fix.** The `sync_all_hubspot_accounts` fan-out test inserted `crm_connections` via the real `db_session` without RLS context; CI's RLS-enforced Postgres rejected it (local bypasses RLS). Rewrote it as a mocked-session test. This red CI had been blocking CI-gated auto-deploys.
+
+Non-code (documented above): created a HubSpot **public/OAuth** app via `hs project create` (legacy public-app creation is disabled in the UI), signed the developer Acceptable Use Policy, set `HUBSPOT_*` on Railway (env var is `_URI` not `_URL`), and fixed **Railway auto-deploy** — both `web` and `worker` had no `main` Source-branch trigger; once set (and CI green), a single push auto-deploys both (verified end-to-end).
+
+Open follow-ups: HubSpot sync-status line in `/relay settings` (parity with GitHub); `git_sha` in `/health`; Steps 8/13/14; demo video + Devpost.
 
 ### Claude — 2026-06-25 (UX polish: usable drafts, CSM-attributed send, App Home review)
 Branch: `main` (operational fixes, per established pattern)
