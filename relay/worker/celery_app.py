@@ -1,5 +1,5 @@
-# Both the web and worker Railway services deploy from main on push (auto-deploy
-# verified 2026-06-30). Keep them on the same branch so a single push ships both.
+# Both the web and worker Railway services auto-deploy from main on push
+# (verified 2026-06-30). Keep them on the same branch so one push ships both.
 from celery import Celery
 
 from relay.config import get_settings
