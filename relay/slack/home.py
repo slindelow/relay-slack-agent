@@ -330,7 +330,16 @@ def build_home(
 @app.event("app_home_opened")
 async def publish_app_home(event, client, body):
     team_id: str = body.get("team_id", "")
+    await render_and_publish_home(client, team_id, event["user"])
 
+
+async def render_and_publish_home(client, team_id: str, user_id: str) -> None:
+    """Render the App Home view for a user and publish it.
+
+    Shared by the ``app_home_opened`` handler and draft-action handlers
+    (discard/regenerate/send) so the Home tab reflects state changes
+    immediately instead of waiting for the user to navigate away and back.
+    """
     connector_rows: list[Any] = []
     questions_needing_draft: list[Any] = []
     pending_drafts: list[Any] = []
@@ -456,7 +465,7 @@ async def publish_app_home(event, client, body):
                     )
                     total_questions_7d = question_count_result.scalar_one()
         except Exception:
-            logger.warning("publish_app_home: failed to render for user %s", event.get("user", "unknown"), exc_info=True)
+            logger.warning("render_and_publish_home: failed to render for user %s", user_id, exc_info=True)
 
     blocks = build_home(
         connector_rows,
@@ -469,7 +478,7 @@ async def publish_app_home(event, client, body):
         pending_drafts=pending_drafts,
     )
     await client.views_publish(
-        user_id=event["user"],
+        user_id=user_id,
         view={"type": "home", "blocks": blocks},
     )
 

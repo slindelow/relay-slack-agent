@@ -227,6 +227,7 @@ async def handle_send_draft(ack, body, client):
     await ack()
 
     user_id = body.get("user", {}).get("id", "")
+    team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
     view = body.get("view", {})
     private_meta = json.loads(view.get("private_metadata", "{}"))
     draft_id_str = private_meta.get("draft_id", "")
@@ -362,6 +363,9 @@ async def handle_send_draft(ack, body, client):
                 except Exception:
                     logger.warning("index_approved_response failed; response was sent", exc_info=True)
 
+        from relay.slack.home import render_and_publish_home
+        await render_and_publish_home(client, team_id, user_id)
+
         # Notify CSM
         channel_name = f"<#{channel_id_slack}>" if channel_id_slack else "the customer channel"
         await client.chat_postMessage(
@@ -386,6 +390,7 @@ async def handle_discard_draft(ack, body, client):
     draft_id_str = actions[0].get("value", "") if actions else ""
     user_id = body.get("user", {}).get("id", "")
     team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
+    view_id = body.get("view", {}).get("id", "")
 
     try:
         draft_id = uuid.UUID(draft_id_str)
@@ -439,6 +444,26 @@ async def handle_discard_draft(ack, body, client):
                 draft_accepted=False,
                 sla_met=None,
             ))
+
+        from relay.slack.home import render_and_publish_home
+        await render_and_publish_home(client, team_id, user_id)
+
+        if view_id:
+            try:
+                await client.views_update(
+                    view_id=view_id,
+                    view={
+                        "type": "modal",
+                        "title": {"type": "plain_text", "text": "Draft Discarded"},
+                        "close": {"type": "plain_text", "text": "Close"},
+                        "blocks": [{
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": ":wastebasket: Draft discarded."},
+                        }],
+                    },
+                )
+            except Exception:
+                logger.warning("relay_discard_draft: failed to update modal for draft %s", draft_id, exc_info=True)
 
     except Exception:
         logger.exception("relay_discard_draft: error for draft %s", draft_id_str)
@@ -505,6 +530,9 @@ async def handle_regenerate_draft(ack, body, client):
                 actor_user_id=actor_id,
                 correction_action="regenerate_draft",
             ))
+
+        from relay.slack.home import render_and_publish_home
+        await render_and_publish_home(client, team_id, user_id)
 
         if question_id:
             generate_draft_for_question.delay(str(workspace_id), str(question_id))
