@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select, text
 
 from relay.context.contracts import ContextSource
-from relay.context.service import assemble_evidence_for_question, search_slack_context
+from relay.context.service import assemble_evidence_for_question, search_customer_history, search_slack_context
 from relay.db.models import ContextToolLog, CustomerAccount, Message, MonitoredChannel, Question, User
 from relay.slack.oauth import upsert_workspace_from_install
 
@@ -159,3 +159,26 @@ async def test_search_slack_context_api_error_returns_empty_and_logs(db_session)
     )
     log = log_result.scalars().first()
     assert log.metadata_json["error"] == "slack_api_error"
+
+
+@pytest.mark.asyncio
+async def test_search_customer_history_returns_recent_customer_messages(db_session):
+    workspace, _user, _question = await _seed_question(db_session)
+
+    results = await search_customer_history(
+        workspace.id,
+        "what is the customer's main concern?",
+        db_session,
+        actor_slack_user_id="U_CSM",
+    )
+
+    assert len(results) == 1
+    assert results[0].provider == "customer_history"
+    assert "How do we rotate the SSO certificate?" in results[0].excerpt
+    log_result = await db_session.execute(
+        select(ContextToolLog).where(
+            ContextToolLog.workspace_id == workspace.id,
+            ContextToolLog.tool_name == "search_customer_history",
+        )
+    )
+    assert log_result.scalar_one().metadata_json["message_count"] == 1

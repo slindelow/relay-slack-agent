@@ -11,6 +11,15 @@ _REPO_STRUCTURE_RE = re.compile(
     r"directory tree|directory layout|file tree|where in (?:the )?repo|where does .* handle)\b",
     re.IGNORECASE,
 )
+_MULTI_CHANNEL_RE = re.compile(
+    r"\b(multiple channels|many channels|several channels|manage .*channels|manual sync|manual syncing|syncing)\b",
+    re.IGNORECASE,
+)
+_CUSTOMER_CONCERN_RE = re.compile(
+    r"\b(customer'?s?|account'?s?).*\b(main|top|primary|biggest|concerns?|questions?|asking about|worried about)\b|"
+    r"\b(main|top|primary|biggest)\s+(concerns?|questions?)\b",
+    re.IGNORECASE,
+)
 _STOPWORDS = {
     "a",
     "an",
@@ -40,6 +49,7 @@ _PROVIDER_LABELS = {
     "google_drive": "Google Drive",
     "relay_memory": "Memory",
     "slack_rts": "Slack",
+    "customer_history": "Customer History",
 }
 _TOP_LEVEL_DESCRIPTIONS = {
     "relay": "application code, including Slack handlers, commands, context retrieval, connectors, drafting, workers, and API routes",
@@ -56,6 +66,14 @@ _TOP_LEVEL_DESCRIPTIONS = {
 
 def is_repo_structure_query(query: str) -> bool:
     return bool(_REPO_STRUCTURE_RE.search(query))
+
+
+def is_multi_channel_query(query: str) -> bool:
+    return bool(_MULTI_CHANNEL_RE.search(query))
+
+
+def is_customer_concern_query(query: str) -> bool:
+    return bool(_CUSTOMER_CONCERN_RE.search(query))
 
 
 def escape_mrkdwn(text: str) -> str:
@@ -103,6 +121,16 @@ def source_relevance_score(query: str, source: ContextSource) -> int:
             score -= 6
         if source.provider == "slack_rts":
             score -= 3
+    elif is_multi_channel_query(query):
+        if source.provider in {"github", "relay_memory"}:
+            score += 6
+        if any(marker in title or marker in excerpt for marker in ("register", "slack connect", "monitored channels", "manual sync", "sync")):
+            score += 6
+    elif is_customer_concern_query(query):
+        if source.provider == "customer_history":
+            score += 20
+        if source.provider == "slack_rts":
+            score += 4
     elif source.provider == "relay_memory":
         score += 2
 
@@ -238,7 +266,38 @@ def repo_structure_answer(sources: list[ContextSource]) -> str:
     return " ".join(parts)
 
 
+def multi_channel_answer() -> str:
+    return (
+        "RELAY can monitor multiple Slack Connect customer channels at the same time. "
+        "Each channel is added once with `/relay add #channel Account Name tier @owner` so RELAY can map it to the right customer account and SLA policy. "
+        "After a channel is registered, monitoring is event-driven: Slack sends new messages to RELAY automatically, so customer-channel monitoring does not require manual syncing. "
+        "Manual sync is only for knowledge sources such as GitHub when you want to refresh indexed docs."
+    )
+
+
+def customer_concern_answer(sources: list[ContextSource]) -> str:
+    history = [source for source in sources if source.provider == "customer_history"]
+    if not history:
+        return extractive_answer("", sources)
+    excerpt = history[0].excerpt
+    bullets = []
+    for line in excerpt.splitlines():
+        line = line.strip().lstrip("- ").strip()
+        if line:
+            bullets.append(line)
+        if len(bullets) >= 5:
+            break
+    if not bullets:
+        return "I found recent customer-channel history, but the stored excerpts were too thin to summarize confidently."
+    return "Based on recent registered customer-channel messages, the customer has mainly been asking about: " + "; ".join(bullets) + "."
+
+
 def extractive_answer(query: str, chunks: list[ContextSource]) -> str:
+    if is_multi_channel_query(query):
+        return multi_channel_answer()
+    if is_customer_concern_query(query):
+        return customer_concern_answer(chunks)
+
     if is_repo_structure_query(query):
         structure_sources = [chunk for chunk in chunks if is_structure_source(chunk) or chunk.provider == "github"]
         if structure_sources:

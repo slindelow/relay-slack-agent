@@ -11,11 +11,12 @@ from relay.context.answers import (
     dedupe_and_rank_sources,
     escape_mrkdwn,
     extractive_answer,
+    is_customer_concern_query,
     is_repo_structure_query,
     provider_label,
 )
 from relay.context.contracts import ContextSource
-from relay.context.service import search_indexed_knowledge, search_slack_context
+from relay.context.service import search_customer_history, search_indexed_knowledge, search_slack_context
 from relay.context.slack_rts import slack_search_status
 from relay.db.models import Workspace
 from relay.db.session import get_session
@@ -34,6 +35,7 @@ def _parse_ask_query(text: str) -> str:
 
 _escape_mrkdwn = escape_mrkdwn
 _is_repo_structure_query = is_repo_structure_query
+_is_customer_concern_query = is_customer_concern_query
 _dedupe_and_rank_sources = dedupe_and_rank_sources
 _extractive_answer = extractive_answer
 _provider_label = provider_label
@@ -133,7 +135,16 @@ async def handle_ask(ack, respond, command) -> None:
                 session,
                 top_k=5,
             )
-            chunks = _dedupe_and_rank_sources(query, [*indexed_chunks, *slack_chunks])
+            customer_history_chunks = []
+            if _is_customer_concern_query(query):
+                customer_history_chunks = await search_customer_history(
+                    workspace.id,
+                    query,
+                    session,
+                    top_k=10,
+                    actor_slack_user_id=command.get("user_id", ""),
+                )
+            chunks = _dedupe_and_rank_sources(query, [*customer_history_chunks, *indexed_chunks, *slack_chunks])
             slack_search_connected = status.connected
     except Exception as exc:
         logger.exception("ask_failed team=%s", slack_team_id)

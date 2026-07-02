@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy import desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.connectors.retrieval import retrieve
@@ -335,6 +336,67 @@ async def search_slack_context(
             "excluded_channel_count": len(excluded_channel_ids),
             **({"error": error} if error else {}),
         },
+    )
+    return sources
+
+
+async def search_customer_history(
+    workspace_id: uuid.UUID,
+    query: str,
+    session: AsyncSession,
+    *,
+    top_k: int = 10,
+    actor_slack_user_id: str | None = None,
+) -> list[ContextSource]:
+    result = await session.execute(
+        select(Message.raw_excerpt, MonitoredChannel.slack_channel_name, Message.created_at)
+        .join(
+            MonitoredChannel,
+            (Message.workspace_id == MonitoredChannel.workspace_id)
+            & (Message.channel_id == MonitoredChannel.id),
+        )
+        .where(
+            Message.workspace_id == workspace_id,
+            Message.is_customer_message.is_(True),
+            MonitoredChannel.workspace_id == workspace_id,
+            MonitoredChannel.is_ext_shared.is_(True),
+            MonitoredChannel.is_active.is_(True),
+        )
+        .order_by(desc(Message.created_at))
+        .limit(top_k)
+    )
+    rows = result.all()
+    lines: list[str] = []
+    newest: datetime | None = None
+    for excerpt, channel_name, created_at in rows:
+        clean = " ".join(str(excerpt or "").split())
+        if not clean:
+            continue
+        channel_prefix = f"#{channel_name}: " if channel_name else ""
+        lines.append(f"- {channel_prefix}{clean[:240]}")
+        if newest is None or (created_at and created_at > newest):
+            newest = created_at
+    sources = []
+    if lines:
+        sources.append(
+            ContextSource(
+                title="Recent registered customer-channel messages",
+                provider="customer_history",
+                url=None,
+                excerpt="\n".join(lines),
+                freshness_ts=newest,
+                stale=False,
+                visibility="customer_safe",
+            )
+        )
+    await log_context_tool_call(
+        session,
+        workspace_id=workspace_id,
+        actor_slack_user_id=actor_slack_user_id,
+        tool_name="search_customer_history",
+        query=query,
+        source_count=len(sources),
+        metadata={"message_count": len(rows)},
     )
     return sources
 

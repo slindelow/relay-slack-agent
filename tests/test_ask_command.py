@@ -262,6 +262,7 @@ async def test_handle_ask_zero_results():
         patch("relay.commands.ask.slack_search_status", new=AsyncMock(return_value=SlackSearchStatus(False))),
         patch("relay.commands.ask.search_indexed_knowledge", new=AsyncMock(return_value=[])),
         patch("relay.commands.ask.search_slack_context", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.search_customer_history", new=AsyncMock(return_value=[])),
     ):
         await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123", "user_id": "U123"})
 
@@ -298,6 +299,7 @@ async def test_handle_ask_returns_formatted_blocks():
         patch("relay.commands.ask.slack_search_status", new=AsyncMock(return_value=SlackSearchStatus(True))),
         patch("relay.commands.ask.search_indexed_knowledge", new=AsyncMock(return_value=[chunk])) as mock_search,
         patch("relay.commands.ask.search_slack_context", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.search_customer_history", new=AsyncMock(return_value=[])),
     ):
         await handle_ask(ack, respond, {"text": "ask SSO docs", "team_id": "T123", "user_id": "U123"})
 
@@ -311,3 +313,49 @@ async def test_handle_ask_returns_formatted_blocks():
     kwargs = respond.await_args.kwargs
     assert kwargs["response_type"] == "ephemeral"
     assert "blocks" in kwargs
+
+
+@pytest.mark.asyncio
+async def test_handle_ask_customer_concern_uses_customer_history():
+    workspace_id = uuid.uuid4()
+    unscoped_session = AsyncMock()
+    workspace_result = MagicMock()
+    workspace_result.scalar_one_or_none.return_value = SimpleNamespace(id=workspace_id)
+    unscoped_session.execute.return_value = workspace_result
+    scoped_session = AsyncMock()
+    history = ContextSource(
+        title="Recent registered customer-channel messages",
+        provider="customer_history",
+        url=None,
+        excerpt=(
+            "- #test-customer: How does RELAY manage multiple channels?\n"
+            "- #test-customer: Does Slack Search include customer context?\n"
+            "- #test-customer: Can RELAY answer from GitHub docs?"
+        ),
+        stale=False,
+    )
+
+    ack = AsyncMock()
+    respond = AsyncMock()
+
+    with (
+        patch(
+            "relay.commands.ask.get_session",
+            side_effect=[_SessionContext(unscoped_session), _SessionContext(scoped_session)],
+        ),
+        patch("relay.commands.ask.slack_search_status", new=AsyncMock(return_value=SlackSearchStatus(True))),
+        patch("relay.commands.ask.search_indexed_knowledge", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.search_slack_context", new=AsyncMock(return_value=[])),
+        patch("relay.commands.ask.search_customer_history", new=AsyncMock(return_value=[history])) as mock_history,
+    ):
+        await handle_ask(
+            ack,
+            respond,
+            {"text": "ask what is the customer's main concern?", "team_id": "T123", "user_id": "U123"},
+        )
+
+    mock_history.assert_awaited_once()
+    text = "\n".join(block.get("text", {}).get("text", "") for block in respond.await_args.kwargs["blocks"])
+    assert "customer has mainly been asking about" in text
+    assert "multiple channels" in text
+    assert "No relevant sources" not in text

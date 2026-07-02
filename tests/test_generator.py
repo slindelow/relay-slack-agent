@@ -222,5 +222,42 @@ def test_ensure_usable_output_replaces_holding_reply_when_prepared_answer_exists
     out = _ensure_usable_output(bundle, output)
 
     assert out.confidence >= 0.7
-    assert "Here’s what I found" in out.customer_draft
     assert "application code" in out.customer_draft
+
+
+def test_ensure_usable_output_uses_clean_multi_channel_answer():
+    src = EvidenceSource(
+        title="README.md",
+        provider="github",
+        url="https://github.com/slindelow/relay-slack-agent/blob/main/README.md",
+        excerpt=(
+            "RELAY monitors registered Slack Connect customer channels. "
+            "/relay register #channel Company Add a channel to monitoring. "
+            "/relay settings Manage connectors and team settings."
+        ),
+        freshness_ts=None,
+        stale=False,
+    )
+    bundle = EvidenceBundle(
+        question_excerpt="How can RELAY manage multiple channels at once? Does it need manual syncing?",
+        account_context={},
+        sources=[src],
+        total_tokens=100,
+    )
+    output = DraftOutput(
+        summary="Holding",
+        evidence=[],
+        confidence=0.2,
+        customer_draft="Thanks for asking. I’ll confirm the details and follow up shortly.",
+        internal_brief="Model fell back.",
+        risks_or_unknowns="",
+        recommended_next_action="",
+    )
+
+    out = _ensure_usable_output(bundle, output)
+
+    assert out.confidence >= 0.7
+    assert "multiple Slack Connect customer channels" in out.customer_draft
+    assert "does not require manual syncing" in out.customer_draft
+    assert "###" not in out.customer_draft
+    assert "```" not in out.customer_draft

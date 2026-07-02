@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 
@@ -184,13 +185,30 @@ def _holding_reply(question: str) -> str:
     )
 
 
+def _customer_safe_prepared_answer(prepared_answer: str) -> str | None:
+    answer = re.sub(r"`([^`]+)`", r"\1", prepared_answer)
+    answer = re.sub(r"```.*?```", " ", answer, flags=re.DOTALL)
+    answer = re.sub(r"#+\s*", "", answer)
+    answer = re.sub(r"\s*\|\s*", " ", answer)
+    answer = re.sub(r"\s+", " ", answer).strip(" -")
+    if not answer:
+        return None
+    command_count = len(re.findall(r"/relay\s+\w+", answer))
+    if command_count >= 3 or "Examples" in answer:
+        return None
+    if len(answer) > 1800:
+        answer = answer[:1800].rsplit(" ", 1)[0].rstrip(".") + "."
+    return answer
+
+
 def _ensure_usable_output(bundle: EvidenceBundle, output: DraftOutput) -> DraftOutput:
     """Guard against empty or vague model drafts when retrieval has a real answer."""
     draft = output.customer_draft.strip()
     prepared_answer = prepared_answer_for_sources(bundle.question_excerpt, bundle.sources)
+    safe_prepared_answer = _customer_safe_prepared_answer(prepared_answer) if prepared_answer else None
 
-    if prepared_answer and (not draft or "confirm the details" in draft.lower() or "follow up shortly" in draft.lower()):
-        output.customer_draft = f"Here’s what I found: {prepared_answer}"
+    if safe_prepared_answer and (not draft or "confirm the details" in draft.lower() or "follow up shortly" in draft.lower()):
+        output.customer_draft = safe_prepared_answer
         output.summary = output.summary or "Answered from retrieved sources"
         output.internal_brief = (
             f"Prepared retrieval answer used for the customer draft: {prepared_answer}\n\n"
