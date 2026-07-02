@@ -272,6 +272,15 @@ async def slack_install(req: Request):
 
 @api.get("/slack/oauth_redirect")
 async def slack_oauth_redirect(req: Request):
+    settings = get_settings()
+    state = req.query_params.get("state", "")
+    if _parse_slack_search_state(state, settings.token_encryption_key_bytes) is not None:
+        return await _handle_slack_search_oauth_callback(
+            code=req.query_params.get("code", ""),
+            state=state,
+            error=req.query_params.get("error", ""),
+            redirect_uri=_slack_search_redirect_uri(settings),
+        )
     return await handler.handle(req)
 
 
@@ -288,7 +297,7 @@ async def slack_search_install(
         )
     settings = get_settings()
     state = build_slack_search_state(team_id, user_id, settings.token_encryption_key_bytes)
-    redirect_uri = f"{settings.app_base_url.rstrip('/')}/slack/search/oauth_redirect"
+    redirect_uri = _slack_search_redirect_uri(settings)
     params = {
         "client_id": settings.slack_client_id,
         "user_scope": settings.slack_search_user_scopes,
@@ -308,6 +317,28 @@ async def slack_search_oauth_redirect(
     error: str = "",
 ):
     """Receive Slack user-token OAuth redirect and store encrypted RTS token."""
+    settings = get_settings()
+    return await _handle_slack_search_oauth_callback(
+        code=code,
+        state=state,
+        error=error,
+        redirect_uri=f"{settings.app_base_url.rstrip('/')}/slack/search/oauth_redirect",
+    )
+
+
+def _slack_search_redirect_uri(settings) -> str:
+    """Use the main Slack redirect so Search consent works with existing app config."""
+    return f"{settings.app_base_url.rstrip('/')}/slack/oauth_redirect"
+
+
+async def _handle_slack_search_oauth_callback(
+    *,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    redirect_uri: str,
+):
+    """Receive Slack user-token OAuth redirect and store encrypted RTS token."""
     if error:
         return JSONResponse({"error": error}, status_code=400)
     settings = get_settings()
@@ -318,7 +349,6 @@ async def slack_search_oauth_redirect(
     if not code:
         return JSONResponse({"error": "missing code"}, status_code=400)
 
-    redirect_uri = f"{settings.app_base_url.rstrip('/')}/slack/search/oauth_redirect"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(

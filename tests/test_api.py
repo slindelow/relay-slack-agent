@@ -1,5 +1,6 @@
 import importlib
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlparse
 
 
 def _client(monkeypatch):
@@ -66,6 +67,49 @@ def test_beta_install_page_links_to_slack_install(monkeypatch):
     assert response.status_code == 200
     assert "Add to Slack" in response.text
     assert "https://relay.example.com/slack/install" in response.text
+
+
+def test_slack_search_install_uses_main_slack_redirect(monkeypatch):
+    module, client = _client(monkeypatch)
+
+    response = client.get(
+        "/slack/search/install?team_id=T123&user_id=U123",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    location = response.headers["location"]
+    params = parse_qs(urlparse(location).query)
+    assert params["redirect_uri"] == ["https://relay.example.com/slack/oauth_redirect"]
+    assert params["client_id"] == ["client"]
+    assert params["user_scope"] == ["search:read.public,search:read.files,search:read.users"]
+
+
+def test_main_slack_redirect_dispatches_search_oauth_state(monkeypatch):
+    module, client = _client(monkeypatch)
+    state = module.build_slack_search_state(
+        "T123",
+        "U123",
+        module.get_settings().token_encryption_key_bytes,
+    )
+    calls = []
+
+    async def fake_search_callback(**kwargs):
+        from fastapi.responses import JSONResponse
+
+        calls.append(kwargs)
+        return JSONResponse({"ok": True, "redirect_uri": kwargs["redirect_uri"]})
+
+    with (
+        patch("relay.api.main._handle_slack_search_oauth_callback", new=fake_search_callback),
+        patch("relay.api.main.handler.handle", new=AsyncMock()) as mock_bolt,
+    ):
+        response = client.get(f"/slack/oauth_redirect?code=abc&state={state}")
+
+    assert response.status_code == 200
+    assert response.json()["redirect_uri"] == "https://relay.example.com/slack/oauth_redirect"
+    assert len(calls) == 1
+    mock_bolt.assert_not_awaited()
 
 
 def test_legal_pages_use_configurable_contact_emails(monkeypatch):
