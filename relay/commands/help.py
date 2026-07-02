@@ -28,7 +28,7 @@ def _help_blocks() -> list[dict]:
     rows = [
         (
             "*Set up RELAY*",
-            "Connect HubSpot, GitHub, Google Drive, and Slack Search.",
+            "Connect HubSpot, GitHub, and Slack Search.",
             "`/relay setup`",
         ),
         (

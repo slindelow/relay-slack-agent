@@ -6,7 +6,7 @@ Welcome to the RELAY private beta. This guide is written for CS team admins — 
 
 ## What RELAY does
 
-RELAY watches your customer Slack Connect channels and automatically detects unanswered questions. When a customer asks something, RELAY notifies your team, helps draft a response using your internal knowledge (docs, GitHub, Google Drive), and lets a human review and send it — all without leaving Slack.
+RELAY watches your customer Slack Connect channels and automatically detects unanswered questions. When a customer asks something, RELAY notifies your team, helps draft a response using your internal knowledge, and lets a human review and send it — all without leaving Slack.
 
 The goal: no customer question goes unanswered, and your team spends less time searching for the right answer.
 
@@ -51,10 +51,9 @@ If you don't use HubSpot, you can skip this step for now — RELAY will still wo
 
 ### 4. Connect a knowledge source
 
-Go to `/relay settings` and click **Connect GitHub** or **Connect Google Drive**.
+Go to `/relay settings` and click **Connect GitHub**.
 
 - **GitHub:** Paste a personal access token (needs `repo:read` scope). RELAY will index your documentation repos.
-- **Google Drive:** Paste a service account credentials JSON. RELAY will index specified folders.
 
 Once connected, RELAY syncs your content and uses it to draft responses.
 

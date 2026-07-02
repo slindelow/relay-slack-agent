@@ -83,12 +83,6 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
         },
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "Connect Google Drive"},
-            "action_id": "relay_setup_google_drive_connector",
-            "value": "google_drive",
-        },
-        {
-            "type": "button",
             "text": {"type": "plain_text", "text": "Enable Slack Search"},
             "url": search_connect_url,
         },

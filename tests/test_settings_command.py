@@ -69,6 +69,8 @@ def test_build_settings_blocks_shows_setup_state():
     assert "Customer Slack Connect channel registered" in text
     assert "/relay add #channel Account Name enterprise @owner" in text
     assert "Connect HubSpot" in str(blocks)
+    assert "Connect GitHub" in str(blocks)
+    assert "Connect Google Drive" not in str(blocks)
 
 
 def test_build_settings_blocks_mentions_bootstrap_admin():

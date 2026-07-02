@@ -15,7 +15,7 @@ Once installed, four setup steps unlock the full feature set:
 1. **Admin configured** — automatic on install (the person who clicks "Add to Slack" becomes admin)
 2. **Add a customer channel** — run `/relay add #channel-name CompanyName enterprise @owner` for your first Slack Connect customer channel
 3. **Connect HubSpot** — click "Connect HubSpot" in the RELAY App Home and complete OAuth
-4. **Connect a knowledge source** — run `/relay setup` and connect GitHub or Google Drive
+4. **Connect a knowledge source** — run `/relay setup` and connect GitHub
 
 After all four steps, the App Home shows ":tada: Setup complete" and RELAY begins monitoring for unanswered customer questions automatically.
 
@@ -76,7 +76,7 @@ Top-level structure of this repository:
 | `relay/` | The application package. |
 | `relay/api/` | FastAPI routes and the HTTP surface. |
 | `relay/slack/` | Slack Bolt event handlers, commands, and interactive UI. |
-| `relay/connectors/` | Knowledge-source connectors (GitHub, Google Drive), chunking, embeddings, and semantic retrieval. |
+| `relay/connectors/` | Knowledge-source connectors, chunking, embeddings, and semantic retrieval. |
 | `relay/context/` | Evidence assembly and the MCP context server. |
 | `relay/drafting/` | Cited draft generation, evidence bundling, and resolution memory. |
 | `relay/question/`, `relay/sla/` | Question lifecycle and SLA tracking. |
