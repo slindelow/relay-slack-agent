@@ -51,6 +51,40 @@ _PROVIDER_LABELS = {
     "slack_rts": "Slack",
     "customer_history": "Customer History",
 }
+_CUSTOMER_CONCERN_PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
+    (
+        "Multi-channel operations",
+        "whether RELAY can monitor several Slack Connect customer channels without extra manual work",
+        re.compile(
+            r"\b(multiple|many|several)\s+channels?\b|\bmanage .*channels?\b|\bmanual sync(?:ing)?\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Answer speed and quality",
+        "whether RELAY will help the team answer customer questions faster with clean, useful drafts",
+        re.compile(
+            r"\b(answer(?:ed|s|ing)? faster|client questions?|customer questions?|draft|response)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Knowledge grounding",
+        "whether RELAY is using the right knowledge sources, including repo docs, GitHub, and connected Slack context",
+        re.compile(
+            r"\b(github|repo|repository|folder setup|folder structure|knowledge retrieval|knowledge base|slack search|sources?)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Setup and connectors",
+        "whether the setup flow and connectors are understandable enough for a customer-facing team to trust",
+        re.compile(
+            r"\b(connect|connector|settings|setup|sync|google drive|hubspot)\b",
+            re.IGNORECASE,
+        ),
+    ),
+)
 _TOP_LEVEL_DESCRIPTIONS = {
     "relay": "application code, including Slack handlers, commands, context retrieval, connectors, drafting, workers, and API routes",
     "tests": "the pytest suite covering commands, Slack flows, retrieval, connectors, drafting, and security behavior",
@@ -275,21 +309,73 @@ def multi_channel_answer() -> str:
     )
 
 
+def _history_lines(sources: list[ContextSource]) -> list[str]:
+    lines: list[str] = []
+    seen: set[str] = set()
+    for source in sources:
+        if source.provider != "customer_history":
+            continue
+        for raw_line in source.excerpt.splitlines():
+            line = raw_line.strip().lstrip("- ").strip()
+            if not line:
+                continue
+            # Strip channel labels like "#test-customer:" or "#C0123:"; they are useful
+            # as citations, but noisy inside the actual account insight.
+            line = re.sub(r"^#[A-Z0-9_-]+:\s*", "", line, flags=re.IGNORECASE)
+            line = " ".join(line.split())
+            key = re.sub(r"\W+", " ", line.lower()).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            lines.append(line)
+    return lines
+
+
+def _customer_concern_themes(lines: list[str]) -> list[tuple[str, str, int]]:
+    themes: list[tuple[str, str, int]] = []
+    for label, insight, pattern in _CUSTOMER_CONCERN_PATTERNS:
+        count = sum(1 for line in lines if pattern.search(line))
+        if count:
+            themes.append((label, insight, count))
+    themes.sort(key=lambda item: (-item[2], item[0]))
+    return themes
+
+
 def customer_concern_answer(sources: list[ContextSource]) -> str:
-    history = [source for source in sources if source.provider == "customer_history"]
-    if not history:
+    lines = _history_lines(sources)
+    if not lines:
         return extractive_answer("", sources)
-    excerpt = history[0].excerpt
-    bullets = []
-    for line in excerpt.splitlines():
-        line = line.strip().lstrip("- ").strip()
-        if line:
-            bullets.append(line)
-        if len(bullets) >= 5:
-            break
-    if not bullets:
-        return "I found recent customer-channel history, but the stored excerpts were too thin to summarize confidently."
-    return "Based on recent registered customer-channel messages, the customer has mainly been asking about: " + "; ".join(bullets) + "."
+    themes = _customer_concern_themes(lines)
+    if not themes:
+        examples = "; ".join(lines[:3])
+        return (
+            "The recent customer-channel history does not cluster cleanly yet. "
+            f"Best read: they are still exploring RELAY and asking discovery questions. Recent examples: {examples}."
+        )
+
+    theme_text = "; ".join(f"{label}: {insight}" for label, insight, _count in themes[:3])
+    if any(label == "Multi-channel operations" for label, _insight, _count in themes):
+        main_signal = (
+            "Their main concern is operational reliability: whether RELAY can reduce CSM manual work while handling "
+            "multiple customer channels automatically."
+        )
+        next_reply = (
+            "A strong reply should reassure them that channels are registered once, monitoring is event-driven, "
+            "and manual sync is only for refreshing knowledge sources like GitHub."
+        )
+    elif any(label == "Answer speed and quality" for label, _insight, _count in themes):
+        main_signal = (
+            "Their main concern is whether RELAY will materially improve response quality and speed "
+            "for real customer questions."
+        )
+        next_reply = (
+            "A strong reply should explain how RELAY detects open questions, retrieves approved context, and creates a draft for review."
+        )
+    else:
+        main_signal = "Their main concern is whether RELAY can be trusted as a grounded customer-support workflow."
+        next_reply = "A strong reply should connect the setup/source questions back to faster, safer customer replies."
+
+    return f"{main_signal} Recent messages cluster into {theme_text}. {next_reply}"
 
 
 def extractive_answer(query: str, chunks: list[ContextSource]) -> str:

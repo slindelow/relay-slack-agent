@@ -356,6 +356,7 @@ async def test_handle_ask_customer_concern_uses_customer_history():
 
     mock_history.assert_awaited_once()
     text = "\n".join(block.get("text", {}).get("text", "") for block in respond.await_args.kwargs["blocks"])
-    assert "customer has mainly been asking about" in text
-    assert "multiple channels" in text
+    assert "main concern is operational reliability" in text
+    assert "multiple customer channels automatically" in text
+    assert "#test-customer:" not in text
     assert "No relevant sources" not in text
