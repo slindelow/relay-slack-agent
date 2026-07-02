@@ -49,7 +49,7 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     slack_search_line = f"{_mark(status.slack_search_connected)} Slack Search context enabled"
 
     help_text = (
-        "*Private beta setup*\n"
+        "*Setup checklist*\n"
         f"{install_line}\n"
         f"{admin_line}\n"
         f"{channel_line}\n"
@@ -111,7 +111,13 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     ]
 
     blocks = [
-        {"type": "section", "text": {"type": "mrkdwn", "text": "*RELAY settings*"}},
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Set up RELAY*\nConnect the channels and sources RELAY needs to monitor customers and draft approved replies.",
+            },
+        },
         {"type": "section", "text": {"type": "mrkdwn", "text": help_text}},
         *(
             [{
@@ -129,8 +135,8 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    "*Register a customer channel*\n"
-                    "`/relay register #channel Account Name enterprise @owner`"
+                    "*Next step: add a customer channel*\n"
+                    "`/relay add #channel Account Name enterprise @owner`"
                 ),
             },
         },

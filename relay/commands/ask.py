@@ -88,7 +88,14 @@ async def handle_ask(ack, respond, command) -> None:
 
     query = _parse_ask_query(command.get("text") or "")
     if not query:
-        await respond(response_type="ephemeral", text="Usage: /relay ask <your question>")
+        await respond(
+            response_type="ephemeral",
+            text=(
+                "*Ask RELAY knowledge*\n"
+                "Use `/relay ask <your question>`.\n"
+                "Example: `/relay ask where do we handle Slack event ingestion?`"
+            ),
+        )
         return
 
     slack_team_id = command.get("team_id")

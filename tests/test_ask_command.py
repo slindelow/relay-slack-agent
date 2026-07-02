@@ -232,7 +232,14 @@ async def test_handle_ask_empty_query_returns_usage():
     await handle_ask(ack, respond, {"text": "ask", "team_id": "T123"})
 
     ack.assert_awaited_once()
-    respond.assert_awaited_once_with(response_type="ephemeral", text="Usage: /relay ask <your question>")
+    respond.assert_awaited_once_with(
+        response_type="ephemeral",
+        text=(
+            "*Ask RELAY knowledge*\n"
+            "Use `/relay ask <your question>`.\n"
+            "Example: `/relay ask where do we handle Slack event ingestion?`"
+        ),
+    )
 
 
 @pytest.mark.asyncio

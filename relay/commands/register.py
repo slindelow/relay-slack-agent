@@ -25,7 +25,7 @@ _USER_MENTION_RE = re.compile(r"^<@([A-Z0-9]+)(?:\|[^>]+)?>$")
 
 
 def _parse_register_args(text: str) -> tuple[str, str, str, str, str | None] | None:
-    """Parse the arguments after 'register'.
+    """Parse the arguments after 'register' or 'add'.
 
     Expected:
         #channel-name account-name tier [@owner]
@@ -35,8 +35,11 @@ def _parse_register_args(text: str) -> tuple[str, str, str, str, str | None] | N
     or None if parsing fails.
     """
     stripped = text.strip()
-    if stripped.lower().startswith("register"):
-        stripped = stripped[len("register"):].strip()
+    lowered = stripped.lower()
+    for prefix in ("register", "add"):
+        if lowered == prefix or lowered.startswith(f"{prefix} "):
+            stripped = stripped[len(prefix):].strip()
+            break
     if not stripped:
         return None
 
@@ -165,7 +168,11 @@ async def handle_register(ack, respond, command, client=None) -> None:
     if parsed is None:
         await respond(
             response_type="ephemeral",
-            text="Usage: /relay register #channel account-name tier [@owner]",
+            text=(
+                "*Add a customer channel*\n"
+                "Use `/relay add #channel Account Name enterprise @owner`.\n"
+                "Valid tiers: `enterprise`, `pro`, `starter`. The channel must be a Slack Connect channel."
+            ),
         )
         return
 

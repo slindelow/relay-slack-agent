@@ -60,7 +60,10 @@ def test_build_settings_blocks_shows_setup_state():
 
     text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
     assert "Slack app installed" in text
+    assert "Set up RELAY" in text
+    assert "Setup checklist" in text
     assert "Customer Slack Connect channel registered" in text
+    assert "/relay add #channel Account Name enterprise @owner" in text
     assert "Connect HubSpot" in str(blocks)
 
 

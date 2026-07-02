@@ -13,8 +13,8 @@ features:
   slash_commands:
     - command: /relay
       url: https://relay-beta.example.com/slack/events
-      description: Configure RELAY and manage customer questions.
-      usage_hint: help
+      description: Set up RELAY, add channels, ask knowledge, and check account pulse.
+      usage_hint: "help | setup | add #channel Account enterprise @owner | ask ..."
       should_escape: true
 oauth_config:
   redirect_urls:

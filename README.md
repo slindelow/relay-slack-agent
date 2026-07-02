@@ -13,9 +13,9 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 Once installed, four setup steps unlock the full feature set:
 
 1. **Admin configured** — automatic on install (the person who clicks "Add to Slack" becomes admin)
-2. **Register a channel** — run `/relay register #channel-name CompanyName` in your first customer channel
+2. **Add a customer channel** — run `/relay add #channel-name CompanyName enterprise @owner` for your first Slack Connect customer channel
 3. **Connect HubSpot** — click "Connect HubSpot" in the RELAY App Home and complete OAuth
-4. **Connect a knowledge source** — run `/relay settings` and connect GitHub or Google Drive
+4. **Connect a knowledge source** — run `/relay setup` and connect GitHub or Google Drive
 
 After all four steps, the App Home shows ":tada: Setup complete" and RELAY begins monitoring for unanswered customer questions automatically.
 
@@ -27,7 +27,7 @@ For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/
 ## What Works Today
 
 - Slack/FastAPI event surface for Slack OAuth, Events API, interactivity, App Home, and slash commands.
-- `/relay help`, `/relay settings`, `/relay register`, `/relay ask`, `/relay pulse`, and `/relay delete-workspace-data`.
+- `/relay help`, `/relay setup`, `/relay add`, `/relay ask`, `/relay pulse`, and `/relay delete-workspace-data` (with `settings`/`sources`/`connect` and `register` aliases).
 - Slack Connect channel registration and customer-team verification.
 - Async worker ingestion, question classification, question state machine, SLA polling, DM alerts, claim/snooze/not-a-question actions.
 - Source connector, embedding, retrieval, evidence bundle, draft generation, review modal, approved posting, impact metrics, feedback export, and resolution memory.
@@ -58,7 +58,7 @@ The core loop works live. Remaining work before broader invited usage is validat
 ## How It Works
 
 1. A Slack admin installs RELAY into a workspace.
-2. An admin registers a Slack Connect customer channel with `/relay register`.
+2. An admin registers a Slack Connect customer channel with `/relay add`.
 3. A customer posts in the registered channel.
 4. Slack sends the event to RELAY, and RELAY immediately acks Slack.
 5. A Celery worker classifies the message and creates a question when appropriate.

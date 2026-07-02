@@ -123,7 +123,10 @@ async def test_handle_pulse_account_not_found():
 
     respond.assert_awaited_once_with(
         response_type="ephemeral",
-        text="Account not found. Run `/relay register` to add it.",
+        text=(
+            "Account not found. Use `/relay pulse` to see accounts with open questions, "
+            "or add a Slack Connect channel with `/relay add #channel Account Name enterprise @owner`."
+        ),
     )
 
 

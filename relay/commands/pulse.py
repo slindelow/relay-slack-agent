@@ -272,7 +272,13 @@ async def handle_pulse(ack, respond, command) -> None:
             if query:
                 pulse = await _account_detail_pulse(workspace.id, session, query)
                 if pulse is None:
-                    await respond(response_type="ephemeral", text="Account not found. Run `/relay register` to add it.")
+                    await respond(
+                        response_type="ephemeral",
+                        text=(
+                            "Account not found. Use `/relay pulse` to see accounts with open questions, "
+                            "or add a Slack Connect channel with `/relay add #channel Account Name enterprise @owner`."
+                        ),
+                    )
                     return
                 blocks = _detail_blocks(pulse)
             else:
