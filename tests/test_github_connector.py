@@ -201,6 +201,8 @@ async def test_sync_indexes_repository_structure():
     assert "relay" in embedded_text
     assert "docs" in embedded_text
     assert "docs/deployment" in embedded_text
+    assert "Human-readable layout summary" in embedded_text
+    assert "relay/: application code" in embedded_text
 
 
 @pytest.mark.asyncio

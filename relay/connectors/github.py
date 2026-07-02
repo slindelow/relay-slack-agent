@@ -24,6 +24,17 @@ except ModuleNotFoundError:  # pragma: no cover - exercised when dependency is a
     Github = None
 
 _STALE_AFTER = timedelta(hours=48)
+_STRUCTURE_DESCRIPTIONS = {
+    "relay": "application code: Slack handlers, commands, context retrieval, connectors, drafting, workers, and API routes",
+    "tests": "pytest coverage for commands, Slack flows, retrieval, connectors, drafting, and security behavior",
+    "docs": "architecture, deployment, beta, demo, and handoff documentation",
+    "alembic": "database migrations and schema changes",
+    "scripts": "local startup, manifest, deployment, and smoke-test scripts",
+    "classifier": "question-classification labeling and evaluation utilities",
+    "tasks": "implementation plans and status notes",
+    "memory": "project memory and glossary notes",
+    "archive": "historical plan snapshots",
+}
 
 
 @dataclass(frozen=True)
@@ -94,6 +105,12 @@ def _structure_item(repo, repo_name: str) -> _SourceItem | None:
         f"REPOSITORY STRUCTURE for {repo_name}",
         "",
         "This document describes the folder and file layout of the repository.",
+        "",
+        "Human-readable layout summary:",
+        *[
+            f"- {name}/: {_STRUCTURE_DESCRIPTIONS.get(name, 'top-level repository entry')}"
+            for name in top_level
+        ],
         "",
         "Top-level entries:",
         *[f"- {name}" for name in top_level],

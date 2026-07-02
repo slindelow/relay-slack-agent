@@ -144,6 +144,8 @@ def test_repo_structure_query_prefers_github_structure_source():
     assert "`relay/`" in text
     assert "`tests/`" in text
     assert "`docs/`" in text
+    assert "application code" in text
+    assert "pytest suite" in text
     assert "TestCo" not in text.split("*Citations*")[0]
 
 
@@ -190,6 +192,35 @@ def test_where_does_handle_query_uses_repo_structure_intent_ranking():
     )
 
     assert ranked[0] == structure
+
+
+def test_repo_structure_answer_infers_layout_from_path_only_chunk():
+    structure = ContextSource(
+        title="owner/repo repository structure",
+        provider="github",
+        url="https://github.com/owner/repo",
+        excerpt=(
+            "- relay/slack/events.py\n"
+            "- relay/drafting/generator.py\n"
+            "- relay/connectors/github.py\n"
+            "- tests/test_ask_command.py\n"
+            "- docs/architecture.md\n"
+            "- alembic/versions/0001_initial_schema.py\n"
+            "- scripts/verify_deployment.sh"
+        ),
+        stale=False,
+    )
+
+    blocks = _format_result_blocks(
+        "what is the folder structure of the RELAY repo?",
+        [structure],
+    )
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+
+    assert "indexed GitHub repository tree" not in text
+    assert "application code" in text
+    assert "database migrations" in text
+    assert "`relay/slack/events.py`" in text
 
 
 @pytest.mark.asyncio

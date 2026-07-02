@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from relay.drafting.evidence import EvidenceBundle, EvidenceSource
-from relay.drafting.generator import DraftOutput, _build_user_message
+from relay.drafting.generator import DraftOutput, _build_user_message, _ensure_usable_output
 
 
 def _make_bundle(sources=None):
@@ -73,6 +73,35 @@ def test_build_user_message_account_context():
 
     assert "enterprise" in msg
     assert "120000" in msg
+
+
+def test_build_user_message_includes_prepared_answer_for_repo_structure():
+    src = EvidenceSource(
+        title="owner/repo repository structure",
+        provider="github",
+        url="https://github.com/owner/repo",
+        excerpt=(
+            "- relay/slack/events.py\n"
+            "- relay/drafting/generator.py\n"
+            "- relay/connectors/github.py\n"
+            "- tests/test_generator.py\n"
+            "- docs/architecture.md"
+        ),
+        freshness_ts=None,
+        stale=False,
+    )
+    bundle = EvidenceBundle(
+        question_excerpt="Where in the repo does RELAY handle Slack event ingestion and draft generation?",
+        account_context={},
+        sources=[src],
+        total_tokens=100,
+    )
+
+    msg = _build_user_message(bundle)
+
+    assert "Prepared answer from retrieved sources" in msg
+    assert "application code" in msg
+    assert "relay/slack/events.py" in msg
 
 
 @pytest.mark.asyncio
@@ -155,4 +184,43 @@ async def test_generate_draft_empty_sources_sets_low_confidence():
         out = await generate_draft(workspace_id, question_id, bundle, session)
 
     assert out.confidence <= 0.3
-    assert out.customer_draft == ""
+    assert "confirm the details" in out.customer_draft
+
+
+def test_ensure_usable_output_replaces_holding_reply_when_prepared_answer_exists():
+    src = EvidenceSource(
+        title="owner/repo repository structure",
+        provider="github",
+        url="https://github.com/owner/repo",
+        excerpt=(
+            "Top-level entries:\n"
+            "- relay\n"
+            "- tests\n"
+            "- docs\n"
+            "- alembic\n"
+            "- scripts\n"
+        ),
+        freshness_ts=None,
+        stale=False,
+    )
+    bundle = EvidenceBundle(
+        question_excerpt="What is the folder structure of the RELAY repo?",
+        account_context={},
+        sources=[src],
+        total_tokens=100,
+    )
+    output = DraftOutput(
+        summary="Holding",
+        evidence=[],
+        confidence=0.2,
+        customer_draft="Thanks for asking. I’ll confirm the details and follow up shortly.",
+        internal_brief="Model fell back.",
+        risks_or_unknowns="",
+        recommended_next_action="",
+    )
+
+    out = _ensure_usable_output(bundle, output)
+
+    assert out.confidence >= 0.7
+    assert "Here’s what I found" in out.customer_draft
+    assert "application code" in out.customer_draft

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from relay.context.answers import prepared_answer_for_sources
 from relay.config import get_settings
 from relay.drafting.evidence import EvidenceBundle
 
@@ -40,6 +41,7 @@ Rules for customer_draft (the message the CSM will send to the customer):
 - customer_draft must ALWAYS be a complete, polished message the CSM could send as-is. NEVER leave it empty, and NEVER put analysis, meta-commentary, or "cannot draft" text in it.
 - Ground every factual claim in the retrieved sources. NEVER invent specifics — dates, prices, feature availability, commitments, or timelines.
 - When the evidence does NOT contain the answer, still write a helpful HOLDING reply: warmly acknowledge the specific question, say nothing you can't verify, and tell the customer you're confirming the details with the team and will follow up shortly. Example tone: "Thanks for asking about X! I want to make sure I give you an accurate answer, so let me confirm the details with our team and get right back to you."
+- If a **Prepared answer from retrieved sources** is present, use it as the backbone of customer_draft unless it conflicts with the retrieved sources. Do not fall back to a holding reply when the prepared answer directly answers the question.
 - Keep it concise, warm, and professional (under 2000 characters).
 - Sources marked visibility="internal" may inform your understanding, but their URLs/Slack permalinks must never appear in customer_draft.
 
@@ -67,6 +69,15 @@ class DraftOutput:
 
 def _build_user_message(bundle: EvidenceBundle) -> str:
     parts = [f"**Customer question:**\n{bundle.question_excerpt}\n"]
+
+    prepared_answer = prepared_answer_for_sources(bundle.question_excerpt, bundle.sources)
+    if prepared_answer:
+        parts.append(
+            "**Prepared answer from retrieved sources:**\n"
+            f"{prepared_answer}\n"
+            "Use this as the backbone of the customer reply if it answers the question. "
+            "Keep citations and caveats in the internal fields, not in customer_draft.\n"
+        )
 
     if bundle.account_context:
         ctx = bundle.account_context
@@ -115,6 +126,7 @@ async def generate_draft(
     user_message = _build_user_message(bundle)
 
     output = await _call_with_retry(client, model, user_message)
+    output = _ensure_usable_output(bundle, output)
 
     # Save Draft row
     await _save_draft(workspace_id, question_id, bundle, output, session)
@@ -163,6 +175,38 @@ async def _call_with_retry(client, model: str, user_message: str) -> DraftOutput
             raise
 
     raise RuntimeError("Draft generation failed: model did not produce a valid tool call")
+
+
+def _holding_reply(question: str) -> str:
+    return (
+        "Thanks for asking about this. I want to make sure I give you an accurate answer, "
+        "so I’m going to confirm the details with our team and follow up shortly."
+    )
+
+
+def _ensure_usable_output(bundle: EvidenceBundle, output: DraftOutput) -> DraftOutput:
+    """Guard against empty or vague model drafts when retrieval has a real answer."""
+    draft = output.customer_draft.strip()
+    prepared_answer = prepared_answer_for_sources(bundle.question_excerpt, bundle.sources)
+
+    if prepared_answer and (not draft or "confirm the details" in draft.lower() or "follow up shortly" in draft.lower()):
+        output.customer_draft = f"Here’s what I found: {prepared_answer}"
+        output.summary = output.summary or "Answered from retrieved sources"
+        output.internal_brief = (
+            f"Prepared retrieval answer used for the customer draft: {prepared_answer}\n\n"
+            f"{output.internal_brief}".strip()
+        )
+        output.risks_or_unknowns = output.risks_or_unknowns or "Review source citations before sending."
+        output.recommended_next_action = output.recommended_next_action or "Review and send if the cited sources look right."
+        output.confidence = max(output.confidence, 0.7)
+        return output
+
+    if not draft:
+        output.customer_draft = _holding_reply(bundle.question_excerpt)
+        output.confidence = min(output.confidence, 0.3)
+        output.risks_or_unknowns = output.risks_or_unknowns or "No supported answer was available in retrieved sources."
+        output.recommended_next_action = output.recommended_next_action or "Verify the answer with the team, then update the draft."
+    return output
 
 
 async def _save_draft(
