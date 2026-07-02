@@ -336,6 +336,36 @@ def _parse_multiline_csv(value: str) -> list[str]:
     return items
 
 
+def _validate_google_drive_credentials_json(value: str) -> str | None:
+    try:
+        parsed = json.loads(value or "")
+    except json.JSONDecodeError:
+        return "Enter valid credential JSON."
+    if not isinstance(parsed, dict):
+        return "Enter a Google credential JSON object."
+
+    if parsed.get("type") == "service_account":
+        missing = [
+            key
+            for key in ("client_email", "private_key", "token_uri")
+            if not str(parsed.get(key) or "").strip()
+        ]
+        if missing:
+            return "Service account JSON is missing: " + ", ".join(missing)
+        return None
+
+    oauth_missing = [
+        key
+        for key in ("client_id", "client_secret")
+        if not str(parsed.get(key) or "").strip()
+    ]
+    if oauth_missing:
+        return "OAuth credential JSON must include client_id and client_secret."
+    if not (str(parsed.get("refresh_token") or "").strip() or str(parsed.get("access_token") or "").strip()):
+        return "OAuth credential JSON must include refresh_token or access_token."
+    return None
+
+
 async def _workspace_for_team(team_id: str) -> Workspace | None:
     async with get_session() as session:
         result = await session.execute(
@@ -454,12 +484,24 @@ def _google_drive_modal(team_id: str) -> dict:
                 "type": "input",
                 "block_id": "google_folder_block",
                 "label": {"type": "plain_text", "text": "Folder ID"},
-                "element": {"type": "plain_text_input", "action_id": "google_folder_id"},
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Share this folder with the service account email before saving.",
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "google_folder_id",
+                    "placeholder": {"type": "plain_text", "text": "Drive folder ID from the folder URL"},
+                },
             },
             {
                 "type": "input",
                 "block_id": "google_credentials_block",
-                "label": {"type": "plain_text", "text": "Credential JSON"},
+                "label": {"type": "plain_text", "text": "Service account or OAuth JSON"},
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Paste a Google service account JSON key, or OAuth token JSON with refresh_token.",
+                },
                 "element": {
                     "type": "plain_text_input",
                     "action_id": "google_credentials_json",
@@ -615,20 +657,24 @@ async def handle_save_google_drive_connector(ack, body):
     errors = {}
     if not folder_id.strip():
         errors["google_folder_block"] = "Enter a Google Drive folder ID."
-    try:
-        json.loads(credentials_json or "")
-    except json.JSONDecodeError:
-        errors["google_credentials_block"] = "Enter valid credential JSON."
+    credential_error = _validate_google_drive_credentials_json(credentials_json or "")
+    if credential_error:
+        errors["google_credentials_block"] = credential_error
     if errors:
         await ack(response_action="errors", errors=errors)
         return
 
     await ack()
     async with get_session(workspace.id) as session:
-        await _upsert_source_connector(
+        connector = await _upsert_source_connector(
             session,
             workspace_id=workspace.id,
             connector_type="google_drive",
             credentials=credentials_json,
             config={"folder_id": folder_id.strip()},
         )
+        connector_id = connector.id
+
+    from relay.worker.connector_tasks import sync_connector
+
+    sync_connector.delay(str(workspace.id), str(connector_id))

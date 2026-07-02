@@ -23,20 +23,30 @@ from relay.db.models import KnowledgeChunk, SourceConnector, SourceDocument, Wor
 from relay.db.session import get_session
 from relay.config import get_settings
 
+_DRIVE_READONLY_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
 
 def _build_drive_service(credentials_json: str):
     """Build an authenticated Google Drive API service from credential JSON."""
+    from google.oauth2 import service_account
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 
     creds_dict = json.loads(credentials_json)
-    creds = Credentials(
-        token=creds_dict.get("access_token"),
-        refresh_token=creds_dict.get("refresh_token"),
-        token_uri=creds_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
-        client_id=creds_dict.get("client_id"),
-        client_secret=creds_dict.get("client_secret"),
-    )
+    if creds_dict.get("type") == "service_account":
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=_DRIVE_READONLY_SCOPES,
+        )
+    else:
+        creds = Credentials(
+            token=creds_dict.get("access_token"),
+            refresh_token=creds_dict.get("refresh_token"),
+            token_uri=creds_dict.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=creds_dict.get("client_id"),
+            client_secret=creds_dict.get("client_secret"),
+            scopes=_DRIVE_READONLY_SCOPES,
+        )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
