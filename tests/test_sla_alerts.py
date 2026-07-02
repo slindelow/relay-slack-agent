@@ -63,23 +63,31 @@ def test_build_alert_blocks_returns_list():
 def test_build_alert_blocks_has_actions():
     blocks = _make_blocks()
     action_blocks = [b for b in blocks if b["type"] == "actions"]
-    assert len(action_blocks) == 1
-    elements = action_blocks[0]["elements"]
-    assert len(elements) == 4
+    assert len(action_blocks) == 2
+    elements = [element for block in action_blocks for element in block["elements"]]
+    assert len(elements) == 5
 
 
 def test_build_alert_blocks_claim_is_primary_action():
     blocks = _make_blocks()
     action_blocks = [b for b in blocks if b["type"] == "actions"]
-    elements = action_blocks[0]["elements"]
+    elements = [element for block in action_blocks for element in block["elements"]]
     claim = next(e for e in elements if e["action_id"] == "relay_claim_question")
     assert claim["style"] == "primary"
+
+
+def test_build_alert_blocks_has_resolved_action():
+    blocks = _make_blocks()
+    action_blocks = [b for b in blocks if b["type"] == "actions"]
+    elements = [element for block in action_blocks for element in block["elements"]]
+    resolved = next(e for e in elements if e["action_id"] == "relay_resolve_question")
+    assert resolved["text"]["text"] == "Resolved"
 
 
 def test_build_alert_blocks_has_snooze_actions():
     blocks = _make_blocks()
     action_blocks = [b for b in blocks if b["type"] == "actions"]
-    elements = action_blocks[0]["elements"]
+    elements = [element for block in action_blocks for element in block["elements"]]
     action_ids = {e["action_id"] for e in elements}
     assert "relay_snooze_1h" in action_ids
     assert "relay_snooze_4h" in action_ids
@@ -88,7 +96,7 @@ def test_build_alert_blocks_has_snooze_actions():
 def test_build_alert_blocks_has_not_a_question_action():
     blocks = _make_blocks()
     action_blocks = [b for b in blocks if b["type"] == "actions"]
-    elements = action_blocks[0]["elements"]
+    elements = [element for block in action_blocks for element in block["elements"]]
     not_q = next(e for e in elements if e["action_id"] == "relay_mark_not_question")
     assert not_q["style"] == "danger"
 
@@ -122,7 +130,7 @@ def test_build_alert_blocks_question_id_in_action_values():
     q_id = uuid.uuid4()
     blocks = _make_blocks(question_id=q_id)
     action_blocks = [b for b in blocks if b["type"] == "actions"]
-    elements = action_blocks[0]["elements"]
+    elements = [element for block in action_blocks for element in block["elements"]]
     for element in elements:
         assert element["value"] == str(q_id)
 

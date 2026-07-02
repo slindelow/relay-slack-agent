@@ -82,6 +82,10 @@ flips to **resolved** and the SLA timer stops. Voiceover: *"Nothing reaches the
 customer without human approval. Approve, and RELAY posts it and remembers the
 resolution for next time."*
 
+> Demo cleanup tip: if you create duplicate test alerts or answer outside RELAY,
+> click **Resolved** on the alert. RELAY closes that question, discards pending
+> drafts for it, and stops future SLA reminders.
+
 **Scene 6 — Account insight + knowledge recall (15s, optional).**
 Run:
 ```

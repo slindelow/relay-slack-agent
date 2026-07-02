@@ -88,6 +88,17 @@ def build_alert_blocks(
                 },
                 {
                     "type": "button",
+                    "text": {"type": "plain_text", "text": "Resolved"},
+                    "action_id": "relay_resolve_question",
+                    "value": q_id_str,
+                },
+            ],
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
                     "text": {"type": "plain_text", "text": "Snooze 1h"},
                     "action_id": "relay_snooze_1h",
                     "value": q_id_str,

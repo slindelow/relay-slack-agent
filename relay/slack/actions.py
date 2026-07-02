@@ -4,7 +4,8 @@ Handles the four Block Kit buttons from alert DMs:
   relay_claim_question    — open/detected → claimed
   relay_snooze_1h         — suppress alerts for 1 hour
   relay_snooze_4h         — suppress alerts for 4 hours
-  relay_mark_not_question — close question as not-a-question (resolves with note)
+  relay_resolve_question  — close question as handled/resolved
+  relay_mark_not_question — close question as not-a-question (classifier correction)
 
 All handlers ack immediately and run DB work synchronously within the async
 Bolt handler (no Celery needed — these are user-initiated, low-volume ops).
@@ -236,14 +237,17 @@ async def handle_snooze_4h(ack, body, respond, logger=logger):
     await _handle_snooze(ack, body, respond, hours=4, logger=logger)
 
 
-# ---------------------------------------------------------------------------
-# Action: Mark not a question
-# ---------------------------------------------------------------------------
-
-
-@app.action("relay_mark_not_question")
-async def handle_mark_not_question(ack, body, respond, logger=logger):
-    """Resolve question as 'not a question' — suppresses further alerts."""
+async def _resolve_question_from_alert(
+    ack,
+    body,
+    respond,
+    *,
+    success_text: str,
+    action_label: str,
+    discard_pending_drafts: bool = False,
+    logger=logger,
+) -> None:
+    """Resolve a question from an alert button and suppress future SLA pings."""
     await ack()
 
     question_id = _get_question_id_from_action(body)
@@ -256,7 +260,7 @@ async def handle_mark_not_question(ack, body, respond, logger=logger):
 
     try:
         from sqlalchemy import select
-        from relay.db.models import Question, Workspace
+        from relay.db.models import Draft, Question, Workspace
         from relay.db.session import get_session
 
         # Step 1: resolve workspace from Slack team_id (unscoped — Workspace table has no RLS)
@@ -301,12 +305,59 @@ async def handle_mark_not_question(ack, body, respond, logger=logger):
                         response_type="ephemeral",
                     )
                     return
+            if discard_pending_drafts:
+                draft_result = await session.execute(
+                    select(Draft).where(
+                        Draft.workspace_id == workspace_id,
+                        Draft.question_id == question_id,
+                        Draft.status.in_(["pending", "approved"]),
+                    )
+                )
+                for draft in draft_result.scalars():
+                    draft.status = "discarded"
 
         await respond(
-            text="✅ Marked as not a question. Alerts suppressed.",
+            text=success_text,
             response_type="ephemeral",
         )
 
     except Exception:
-        logger.exception("handle_mark_not_question: error for question %s", question_id)
+        logger.exception("%s: error for question %s", action_label, question_id)
         await respond(text="⚠️ An error occurred. Please try again.", response_type="ephemeral")
+
+
+# ---------------------------------------------------------------------------
+# Action: Resolve question
+# ---------------------------------------------------------------------------
+
+
+@app.action("relay_resolve_question")
+async def handle_resolve_question(ack, body, respond, logger=logger):
+    """Resolve question as handled without sending a RELAY draft."""
+    await _resolve_question_from_alert(
+        ack,
+        body,
+        respond,
+        success_text="✅ Marked resolved. RELAY will stop alerting on this question.",
+        action_label="handle_resolve_question",
+        discard_pending_drafts=True,
+        logger=logger,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Action: Mark not a question
+# ---------------------------------------------------------------------------
+
+
+@app.action("relay_mark_not_question")
+async def handle_mark_not_question(ack, body, respond, logger=logger):
+    """Resolve question as 'not a question' — suppresses further alerts."""
+    await _resolve_question_from_alert(
+        ack,
+        body,
+        respond,
+        success_text="✅ Marked as not a question. Alerts suppressed.",
+        action_label="handle_mark_not_question",
+        logger=logger,
+    )

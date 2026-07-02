@@ -71,7 +71,7 @@ RELAY detects the question and sends you (or the on-call CSM) a DM:
 
 > *"Customer question in #acme-support — 'When does our contract renew?' — 2 minutes ago"*
 
-You'll see two buttons: **Claim** and **Ignore**.
+You'll see actions to **Claim**, mark **Resolved**, **Snooze**, or mark **Not a question**.
 
 ### Claiming a question
 
@@ -82,6 +82,10 @@ Click **Claim** to take ownership. RELAY will open a draft response for you to r
 - Edit the draft directly in the modal, then click **Send**
 
 RELAY posts the response in the channel as the bot. The question is marked resolved.
+
+### Clearing an already-handled question
+
+If you answered the customer outside RELAY, or you are cleaning up test questions, click **Resolved** on the alert. RELAY closes the question, discards pending drafts for that question, and stops future SLA reminders.
 
 ### If no one claims a question
 

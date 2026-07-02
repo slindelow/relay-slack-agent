@@ -14,6 +14,7 @@ from relay.slack.actions import (
     handle_snooze_1h,
     handle_snooze_4h,
     handle_mark_not_question,
+    handle_resolve_question,
 )
 
 
@@ -252,6 +253,53 @@ async def test_snooze_4h_acks():
     ack.assert_awaited_once()
     respond.assert_awaited_once()
     assert "4h" in str(respond.call_args)
+
+
+# ---------------------------------------------------------------------------
+# handle_resolve_question
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_question_acks_and_resolves():
+    ack = AsyncMock()
+    respond = AsyncMock()
+    ws = _make_workspace_mock()
+    q = _make_question_mock("open", workspace_id=ws.id)
+    draft = MagicMock()
+    draft.status = "pending"
+    body = _make_body("relay_resolve_question", str(q.id))
+
+    unscoped_session = _make_unscoped_session_for(ws)
+    scoped_session = AsyncMock()
+    scoped_session.add = MagicMock()
+
+    q_result = MagicMock()
+    q_result.scalar_one_or_none.return_value = q
+    draft_result = MagicMock()
+    draft_result.scalars.return_value = [draft]
+    scoped_session.execute = AsyncMock(side_effect=[q_result, draft_result])
+
+    call_count = [0]
+
+    @asynccontextmanager
+    async def ctx(workspace_id=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            yield unscoped_session
+        else:
+            yield scoped_session
+
+    with patch("relay.db.session.get_session", new=ctx):
+        with patch("relay.question.machine.resolve_question", new=AsyncMock()) as mock_resolve:
+            with patch("relay.slack.actions._get_or_create_user", new=AsyncMock(return_value=_make_user_mock())):
+                await handle_resolve_question(ack=ack, body=body, respond=respond)
+
+    ack.assert_awaited_once()
+    mock_resolve.assert_awaited_once()
+    respond.assert_awaited_once()
+    assert "marked resolved" in str(respond.call_args).lower()
+    assert draft.status == "discarded"
 
 
 # ---------------------------------------------------------------------------
