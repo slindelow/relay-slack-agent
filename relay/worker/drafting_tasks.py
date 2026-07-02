@@ -32,7 +32,7 @@ async def _generate_draft_async(
 ) -> None:
     from sqlalchemy import select
 
-    from relay.db.models import Assignment, Question, QuestionState
+    from relay.db.models import Assignment, Question, QuestionState, Workspace
     from relay.db.session import get_session
     from relay.drafting.evidence import assemble_evidence
     from relay.drafting.generator import generate_draft
@@ -81,15 +81,45 @@ async def _generate_draft_async(
                 if user:
                     csm_slack_user_id = user.slack_user_id
 
+    # Build a standalone AsyncWebClient once, up front. NOTE: this must be a
+    # fresh client constructed with a plain bot token (mirrors relay/sla/poller.py),
+    # NOT `relay.slack.app.app.client` — that singleton is bound to the web
+    # process's event loop and was already tried + reverted here once before
+    # (commit 7cf92c6) because it raised "Event loop is closed" inside Celery's
+    # per-task asyncio.run() loop. A freshly constructed AsyncWebClient has no
+    # such binding and is safe to use from a worker task.
+    # Used both to push a "ready" notification on success and a failure
+    # notification if generation blows up, so the CSM is never left waiting
+    # indefinitely with no explanation either way.
+    slack_client = None
+    workspace = None
+    if csm_slack_user_id:
+        try:
+            from slack_sdk.web.async_client import AsyncWebClient
+
+            from relay.slack.oauth import get_bot_token
+
+            async with get_session(workspace_id) as session:
+                ws_result = await session.execute(
+                    select(Workspace).where(Workspace.id == workspace_id)
+                )
+                workspace = ws_result.scalar_one_or_none()
+                bot_token = await get_bot_token(session, workspace_id)
+            if workspace and bot_token:
+                slack_client = AsyncWebClient(token=bot_token)
+        except Exception:
+            logger.warning(
+                "generate_draft_for_question: could not build Slack client for question %s",
+                question_id,
+                exc_info=True,
+            )
+
     try:
         from relay.context.mcp_server import draft_generation_tool
 
         # The generated draft is surfaced in the RELAY App Home "Drafts Ready for
         # Review" section (with a Review draft button) — that is the CSM's review
-        # surface. We intentionally do NOT DM the CSM from here: the Bolt
-        # app.client is bound to the web process's event loop and cannot post from
-        # Celery's per-task asyncio.run() loop. acting_slack_user_id still scopes
-        # Slack-search evidence to the CSM.
+        # surface. acting_slack_user_id also scopes Slack-search evidence to the CSM.
         await draft_generation_tool(
             str(workspace_id),
             str(question_id),
@@ -97,4 +127,33 @@ async def _generate_draft_async(
         )
     except Exception:
         logger.exception("generate_draft_for_question: error for question %s", question_id)
+        if slack_client:
+            try:
+                await slack_client.chat_postMessage(
+                    channel=csm_slack_user_id,
+                    text=":x: Drafting failed for that question — try *Generate draft* again from the RELAY *Home* tab. If it keeps failing, flag it to an admin.",
+                )
+            except Exception:
+                logger.warning(
+                    "generate_draft_for_question: failure notify failed for question %s",
+                    question_id,
+                    exc_info=True,
+                )
         raise
+
+    # Push the update immediately instead of leaving the CSM to guess when to refresh.
+    if slack_client:
+        try:
+            from relay.slack.home import render_and_publish_home
+
+            await render_and_publish_home(slack_client, workspace.slack_team_id, csm_slack_user_id)
+            await slack_client.chat_postMessage(
+                channel=csm_slack_user_id,
+                text=":memo: Your draft is ready — check the RELAY *Home* tab under *Drafts Ready for Review*.",
+            )
+        except Exception:
+            logger.warning(
+                "generate_draft_for_question: post-generation notify failed for question %s",
+                question_id,
+                exc_info=True,
+            )

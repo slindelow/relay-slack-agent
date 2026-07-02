@@ -155,6 +155,16 @@ def build_draft_modal(
                 "action_id": "relay_discard_draft",
                 "value": str(draft_row.id),
                 "style": "danger",
+                "confirm": {
+                    "title": {"type": "plain_text", "text": "Discard this draft?"},
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "This can't be undone. If you want a new attempt instead, use *Regenerate*.",
+                    },
+                    "confirm": {"type": "plain_text", "text": "Discard"},
+                    "deny": {"type": "plain_text", "text": "Cancel"},
+                    "style": "danger",
+                },
             },
         ],
     })

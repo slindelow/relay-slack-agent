@@ -223,7 +223,12 @@ async def test_send_draft_rejected_for_viewer():
     with patch("relay.slack.draft_actions.get_session", return_value=mock_session):
         await handle_send_draft(ack=ack, body=body, client=client)
 
-    client.chat_postMessage.assert_not_called()
+    # No message reaches a customer channel — the only chat_postMessage call
+    # (if any) must be the access-denied DM back to the unauthorized user, not
+    # a send of the draft content.
+    for call in client.chat_postMessage.call_args_list:
+        assert call.kwargs.get("channel") == "U_VIEWER"
+        assert "Here is my answer" not in call.kwargs.get("text", "")
 
 
 @pytest.mark.asyncio

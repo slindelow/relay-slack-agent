@@ -8,7 +8,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from relay.config import get_settings
-from relay.crypto import encrypt_token, ensure_workspace_dek, kms_provider_from_settings
+from relay.crypto import decrypt_token, encrypt_token, ensure_workspace_dek, kms_provider_from_settings, workspace_encryption_key
 from relay.db.models import SlaPolicy, User, Workspace, WorkspaceSettings, WorkspaceToken
 
 logger = logging.getLogger(__name__)
@@ -128,3 +128,36 @@ async def store_bot_token(
     )
     session.add(token)
     return token
+
+
+async def get_bot_token(session: AsyncSession, workspace_id: uuid.UUID) -> str | None:
+    """Decrypt and return the active bot token for a workspace, or None if absent.
+
+    Used by background workers (Celery tasks, SLA poller) that need to call the
+    Slack Web API directly with a plain ``AsyncWebClient`` — they run in their own
+    event loop and cannot use the Bolt app's client, which is bound to the web
+    process's loop.
+    """
+    settings = get_settings()
+    await _set_workspace_context(session, workspace_id)
+    token_result = await session.execute(
+        select(WorkspaceToken).where(
+            WorkspaceToken.workspace_id == workspace_id,
+            WorkspaceToken.token_type == "bot",
+            WorkspaceToken.is_revoked.is_(False),
+        )
+    )
+    token_row = token_result.scalar_one_or_none()
+    if token_row is None:
+        return None
+
+    key = settings.token_encryption_key_bytes
+    kms_provider = kms_provider_from_settings(settings)
+    if kms_provider is not None:
+        workspace_result = await session.execute(
+            select(Workspace).where(Workspace.id == workspace_id)
+        )
+        workspace = workspace_result.scalar_one()
+        key = workspace_encryption_key(workspace, key, kms_provider)
+
+    return decrypt_token(token_row.encrypted_token, token_row.encrypted_token_nonce, key)

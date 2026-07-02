@@ -116,6 +116,10 @@ async def handle_open_draft_modal(ack, body, client):
                 user_id,
                 draft_id,
             )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=":lock: Only RELAY admins/CSMs can review drafts. Ask an admin to grant you access.",
+            )
             return
 
         async with get_session(workspace_id) as session:
@@ -124,6 +128,10 @@ async def handle_open_draft_modal(ack, body, client):
             )
             draft = draft_result.scalar_one_or_none()
             if draft is None:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":warning: That draft no longer exists — it may have already been sent or discarded. Refresh the *Home* tab.",
+                )
                 return
 
             q_result = await session.execute(
@@ -166,7 +174,7 @@ async def handle_open_draft_modal(ack, body, client):
 
 
 @app.action("relay_generate_draft")
-async def handle_generate_draft(ack, body, respond):
+async def handle_generate_draft(ack, body, client):
     await ack()
 
     actions = body.get("actions", [])
@@ -195,6 +203,10 @@ async def handle_generate_draft(ack, body, respond):
                 user_id,
                 question_id,
             )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=":lock: Only RELAY admins/CSMs can generate drafts. Ask an admin to grant you access.",
+            )
             return
 
         async with get_session(workspace_id) as session:
@@ -205,13 +217,21 @@ async def handle_generate_draft(ack, body, respond):
                 )
             )
             if q_result.scalar_one_or_none() is None:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":warning: That question no longer needs a draft — it may have already been answered or unclaimed. Refresh the *Home* tab.",
+                )
                 return
 
         generate_draft_for_question.delay(str(workspace_id), str(question_id), user_id)
 
-        await respond(
-            response_type="ephemeral",
-            text="Draft generation started — in a few seconds, refresh the RELAY *Home* tab and review it under *Drafts Ready for Review*.",
+        # `respond()` requires a response_url, which App Home block actions never
+        # carry (unlike messages/modals) — DM the CSM directly instead. The Home
+        # tab and a follow-up DM will refresh automatically once generation
+        # finishes (see generate_draft_for_question's post-generation notify).
+        await client.chat_postMessage(
+            channel=user_id,
+            text="Drafting your reply now — you'll get a DM and the RELAY *Home* tab will update automatically when it's ready.",
         )
     except Exception:
         logger.exception("relay_generate_draft: error for question %s", question_id_str)
@@ -224,8 +244,6 @@ async def handle_generate_draft(ack, body, respond):
 
 @app.view("relay_send_draft")
 async def handle_send_draft(ack, body, client):
-    await ack()
-
     user_id = body.get("user", {}).get("id", "")
     team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
     view = body.get("view", {})
@@ -240,6 +258,17 @@ async def handle_send_draft(ack, body, client):
         .get("response_body_value", {})
         .get("value", "")
     ) or ""
+
+    # Empty body guard — checked pre-ack so we can keep the modal open with a
+    # native inline error under the field instead of silently closing it.
+    if not response_body.strip():
+        await ack(
+            response_action="errors",
+            errors={"response_body": "Response can't be empty — write a reply before sending."},
+        )
+        return
+
+    await ack()
 
     try:
         draft_id = uuid.UUID(draft_id_str)
@@ -265,6 +294,10 @@ async def handle_send_draft(ack, body, client):
             draft = draft_result.scalar_one_or_none()
             if draft is None:
                 logger.warning("relay_send_draft: draft %s not found", draft_id)
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":warning: That draft is already gone — nothing was sent.",
+                )
                 return
 
             # Role check — only admin / csm may send drafts
@@ -274,6 +307,10 @@ async def handle_send_draft(ack, body, client):
                 logger.warning(
                     "relay_send_draft: unauthorized send attempt by %s for draft %s",
                     user_id, draft_id,
+                )
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":lock: Only RELAY admins/CSMs can send drafts. Nothing was sent.",
                 )
                 return
 
@@ -298,11 +335,6 @@ async def handle_send_draft(ack, body, client):
                 channel = ch_result.scalar_one_or_none()
                 if channel:
                     channel_id_slack = channel.slack_channel_id
-
-            # Empty body guard
-            if not response_body.strip():
-                logger.warning("relay_send_draft: empty response_body, aborting send")
-                return
 
             # Resolve approver User
             actor_result = await session.execute(
@@ -411,6 +443,10 @@ async def handle_discard_draft(ack, body, client):
             )
             draft = draft_result.scalar_one_or_none()
             if draft is None:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":warning: That draft is already gone.",
+                )
                 return
             from relay.auth import require_relay_csm
             if not await require_relay_csm(session, workspace_id, user_id):
@@ -418,6 +454,10 @@ async def handle_discard_draft(ack, body, client):
                     "relay_discard_draft: unauthorized discard attempt by %s for draft %s",
                     user_id,
                     draft_id,
+                )
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":lock: Only RELAY admins/CSMs can discard drafts.",
                 )
                 return
 
@@ -504,6 +544,10 @@ async def handle_regenerate_draft(ack, body, client):
             )
             draft = draft_result.scalar_one_or_none()
             if draft is None:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":warning: That draft is already gone.",
+                )
                 return
             from relay.auth import require_relay_csm
             if not await require_relay_csm(session, workspace_id, user_id):
@@ -511,6 +555,10 @@ async def handle_regenerate_draft(ack, body, client):
                     "relay_regenerate_draft: unauthorized regenerate attempt by %s for draft %s",
                     user_id,
                     draft_id,
+                )
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=":lock: Only RELAY admins/CSMs can regenerate drafts.",
                 )
                 return
 
