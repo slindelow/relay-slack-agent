@@ -186,4 +186,4 @@ The smoke command uses a throwaway data encryption key and a fake token string. 
 
 - AWS KMS provider selection is implemented, but the beta environment still needs IAM validation and a live KMS smoke check before real customer secrets are stored.
 - HubSpot company upsert has an initial implementation and needs validation against real beta HubSpot data before CRM-backed account sync is considered beta-ready.
-- Connector setup has beta Slack modals for GitHub tokens and Google Drive credential JSON. Full OAuth-based connector onboarding remains post-beta polish.
+- Connector setup exposes GitHub tokens in Slack. Google Drive/Docs remains hidden until direct Google OAuth is ready.

@@ -34,7 +34,7 @@ Expected result: the app installs without requesting internal-channel history an
 In Slack, run:
 
 ```text
-/relay register #ext-acme-support Acme Enterprise enterprise @UREVIEWADMIN
+/relay add #ext-acme-support Acme Enterprise enterprise @UREVIEWADMIN
 ```
 
 Expected result: RELAY replies ephemerally that `ext-acme-support` is registered to `Acme Enterprise`.
@@ -65,7 +65,7 @@ For the seeded `Audit export API availability` question, verify that the active 
 
 1. Open the pending draft for `SSO certificate rotation steps`.
 2. Review the cited evidence bundle.
-3. Click `Approve & Send`.
+3. Click `Send`.
 
 Expected result:
 - RELAY posts the approved response into the original Slack thread.

@@ -2,7 +2,7 @@
 
 RELAY is a Slack-native customer-success agent for teams managing Slack Connect customer channels. It detects unanswered customer questions, tracks SLA risk, retrieves context from CRM/docs/GitHub, drafts source-backed responses, and requires human approval before anything is posted back to a customer.
 
-> **Current status as of 2026-06-25:** Plans 1-10 are merged. Railway is live and the core private-beta product loop has been validated end-to-end in a real Slack Connect workspace. RELAY is ready for focused beta follow-up, but is not yet a self-serve public Slack Marketplace app.
+> **Current status as of 2026-07-02:** Railway is live and the core private-beta loop has been validated end-to-end in a real Slack Connect workspace: setup, channel monitoring, HubSpot sync, GitHub retrieval, Slack Search context, SLA alerts, draft review, and approved posting. RELAY is ready for hackathon submission and focused private-beta usage; it is not yet a self-serve public Slack Marketplace app.
 
 ## Private Beta
 
@@ -17,7 +17,7 @@ Once installed, four setup steps unlock the full feature set:
 3. **Connect HubSpot** — click "Connect HubSpot" in the RELAY App Home and complete OAuth
 4. **Connect a knowledge source** — run `/relay setup` and connect GitHub
 
-After all four steps, the App Home shows ":tada: Setup complete" and RELAY begins monitoring for unanswered customer questions automatically.
+After the core setup steps, RELAY begins monitoring registered customer channels automatically. Slack Search is optional and adds permission-aware internal Slack context to drafts and `/relay ask`.
 
 For a full walkthrough, see [docs/beta-user-guide.md](docs/beta-user-guide.md).
 For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/deployment/private-beta-railway.md).
@@ -35,18 +35,15 @@ For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/
 - Tenant isolation through PostgreSQL RLS and encrypted workspace/connector/CRM tokens.
 - Marketplace-readiness foundation: deletion flows, public legal pages, scope justification, reviewer sandbox, Sentry/health hooks, and security hardening.
 
-## What Still Blocks Broader Private Beta
+## Submission Notes
 
-The core loop works live. Remaining work before broader invited usage is validation and polish:
-
-- **Finish remaining live validation** — 11/14 checklist steps pass; only **8 SLA timer**, **13 workspace deletion**, and **14 uninstall** remain (`docs/deployment/beta-validation-checklist.md`). HubSpot CRM, setup-complete state, and account-pulse ARR are now ✅ live.
-- **Refresh Slack app config on each reinstall** — run `scripts/configure-manifest.sh $APP_BASE_URL` and upload the generated manifest so Messages Tab, channel events, OAuth redirects, and scopes stay aligned.
-- **Run beta preflight/smokes after deploys** — from an operator shell with beta env vars, run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta --live` and `.venv/bin/python scripts/smoke_kms.py`.
-- **HubSpot CRM is live** — `HUBSPOT_CLIENT_ID/SECRET/REDIRECT_URI` are set on Railway and `/relay pulse` shows ARR from the synced CRM. The app is a HubSpot **public (OAuth)** app created via `hs project create` (legacy public-app creation is disabled in the UI), and the developer Acceptable Use Policy must be signed before installs work.
+- **Best demo path:** register one Slack Connect channel, sync HubSpot and GitHub, ask a customer question, claim it, review the cited draft, and send the approved reply.
+- **Slack app config:** before reinstalling or recording, run `scripts/configure-manifest.sh $APP_BASE_URL` and upload the generated manifest so Messages Tab, channel events, OAuth redirects, and scopes stay aligned.
+- **Post-deploy smoke checks:** run `.venv/bin/python scripts/beta_preflight.py --env-file .env.beta --live`, `.venv/bin/python scripts/smoke_kms.py`, and `curl $APP_BASE_URL/health` from an operator shell with beta env vars.
+- **Known product follow-ups:** direct Google OAuth for Drive/Docs, richer admin/team management, and a denser multi-account dashboard. Google Drive connector internals exist in the repo, but the Slack setup UI is intentionally hidden until direct OAuth is production-ready.
 
 ## Private Beta Launch Docs
 
-- Active shared plan: `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 - Railway deployment runbook: `docs/deployment/private-beta-railway.md`
 - AWS hardening runbook: `docs/deployment/private-beta-aws.md`
 - End-to-end validation checklist: `docs/deployment/private-beta-acceptance.md`
@@ -54,7 +51,7 @@ The core loop works live. Remaining work before broader invited usage is validat
 - Slack app manifest: `slack-app-manifest.yaml`
 - Local dev quickstart: `scripts/start-local.sh`
 - Marketplace reviewer docs: `docs/marketplace/`
-- Multi-agent handoff/status: `docs/HANDOFF.md` and `tasks/STATUS.md`
+- Historical planning/status docs: `docs/HANDOFF.md`, `tasks/STATUS.md`, and `docs/PLAN_9_PRIVATE_BETA_LAUNCH.md`
 
 ## How It Works
 
@@ -239,10 +236,4 @@ Do not rely on classifier-driven alerts for beta until the target dataset reache
 
 ## Collaboration Workflow
 
-This repo uses a two-agent development model:
-
-- Codex branches use `codex/...`
-- Claude branches use `claude/...`
-- Neither agent commits directly to `main`
-- Both agents check and update `docs/HANDOFF.md`
-- Plan 9 is the active plan until the private beta launch blockers are cleared
+For active work, use focused branches for larger changes and keep `main` deployable. After changing production behavior, run the pytest suite and redeploy the relevant Railway service.

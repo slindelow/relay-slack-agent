@@ -62,7 +62,10 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     actions = [
         {
             "type": "button",
-            "text": {"type": "plain_text", "text": "Connect HubSpot"},
+            "text": {
+                "type": "plain_text",
+                "text": "Reconnect HubSpot" if status.crm_connected else "Connect HubSpot",
+            },
             "url": _hubspot_connect_url(status),
         },
         *(
@@ -81,11 +84,15 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "action_id": "relay_setup_github_connector",
             "value": "github",
         },
-        {
-            "type": "button",
-            "text": {"type": "plain_text", "text": "Enable Slack Search"},
-            "url": search_connect_url,
-        },
+        *(
+            [{
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Enable Slack Search"},
+                "url": search_connect_url,
+            }]
+            if not status.slack_search_connected
+            else []
+        ),
         *(
             [{
                 "type": "button",
@@ -103,6 +110,7 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "url": status.app_base_url.rstrip("/") or "https://relay.example.com",
         },
     ]
+    next_step = _next_setup_step(status)
 
     blocks = [
         {
@@ -128,10 +136,7 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": (
-                    "*Next step: add a customer channel*\n"
-                    "`/relay add #channel Account Name enterprise @owner`"
-                ),
+                "text": next_step,
             },
         },
         {"type": "actions", "elements": actions},
@@ -139,6 +144,24 @@ def build_settings_blocks(status: SettingsStatus) -> list[dict]:
     if status.connector_rows:
         blocks.extend(_connector_status_blocks(status.connector_rows))
     return blocks
+
+
+def _next_setup_step(status: SettingsStatus) -> str:
+    if status.channel_count == 0:
+        return (
+            "*Next step: add a customer channel*\n"
+            "`/relay add #channel Account Name enterprise @owner`"
+        )
+    if status.source_count == 0:
+        return "*Next step: connect GitHub*\nUse *Connect GitHub* so RELAY can cite approved docs in drafts."
+    if not status.crm_connected:
+        return "*Next step: connect HubSpot*\nUse *Connect HubSpot* so account pulse and draft context include CRM details."
+    if not status.slack_search_connected:
+        return (
+            "*Optional: enable Slack Search*\n"
+            "Use *Enable Slack Search* to include permission-aware internal Slack context in drafts and `/relay ask`."
+        )
+    return "*Ready*\nRELAY is set up to monitor registered customer channels and draft cited replies."
 
 
 def _hubspot_connect_url(status: SettingsStatus) -> str:
@@ -330,36 +353,6 @@ def _parse_multiline_csv(value: str) -> list[str]:
     return items
 
 
-def _validate_google_drive_credentials_json(value: str) -> str | None:
-    try:
-        parsed = json.loads(value or "")
-    except json.JSONDecodeError:
-        return "Enter valid credential JSON."
-    if not isinstance(parsed, dict):
-        return "Enter a Google credential JSON object."
-
-    if parsed.get("type") == "service_account":
-        missing = [
-            key
-            for key in ("client_email", "private_key", "token_uri")
-            if not str(parsed.get(key) or "").strip()
-        ]
-        if missing:
-            return "Service account JSON is missing: " + ", ".join(missing)
-        return None
-
-    oauth_missing = [
-        key
-        for key in ("client_id", "client_secret")
-        if not str(parsed.get(key) or "").strip()
-    ]
-    if oauth_missing:
-        return "OAuth credential JSON must include client_id and client_secret."
-    if not (str(parsed.get("refresh_token") or "").strip() or str(parsed.get("access_token") or "").strip()):
-        return "OAuth credential JSON must include refresh_token or access_token."
-    return None
-
-
 async def _workspace_for_team(team_id: str) -> Workspace | None:
     async with get_session() as session:
         result = await session.execute(
@@ -429,14 +422,22 @@ def _github_modal(team_id: str) -> dict:
         "callback_id": "relay_save_github_connector",
         "private_metadata": json.dumps({"team_id": team_id}),
         "title": {"type": "plain_text", "text": "Connect GitHub"},
-        "submit": {"type": "plain_text", "text": "Save"},
+        "submit": {"type": "plain_text", "text": "Save & Sync"},
         "close": {"type": "plain_text", "text": "Cancel"},
         "blocks": [
             {
                 "type": "input",
                 "block_id": "github_token_block",
                 "label": {"type": "plain_text", "text": "GitHub token"},
-                "element": {"type": "plain_text_input", "action_id": "github_token"},
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Use a read-only token for the repositories RELAY should index.",
+                },
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "github_token",
+                    "placeholder": {"type": "plain_text", "text": "github_pat_…"},
+                },
             },
             {
                 "type": "input",
@@ -446,7 +447,7 @@ def _github_modal(team_id: str) -> dict:
                     "type": "plain_text_input",
                     "action_id": "github_repos",
                     "multiline": True,
-                    "placeholder": {"type": "plain_text", "text": "owner/repo, owner/other-repo"},
+                    "placeholder": {"type": "plain_text", "text": "owner/repo, owner/other-repo…"},
                 },
             },
             {
@@ -458,48 +459,7 @@ def _github_modal(team_id: str) -> dict:
                     "type": "plain_text_input",
                     "action_id": "github_markdown_paths",
                     "multiline": True,
-                    "placeholder": {"type": "plain_text", "text": "README.md, docs/faq.md"},
-                },
-            },
-        ],
-    }
-
-
-def _google_drive_modal(team_id: str) -> dict:
-    return {
-        "type": "modal",
-        "callback_id": "relay_save_google_drive_connector",
-        "private_metadata": json.dumps({"team_id": team_id}),
-        "title": {"type": "plain_text", "text": "Connect Drive"},
-        "submit": {"type": "plain_text", "text": "Save"},
-        "close": {"type": "plain_text", "text": "Cancel"},
-        "blocks": [
-            {
-                "type": "input",
-                "block_id": "google_folder_block",
-                "label": {"type": "plain_text", "text": "Folder ID"},
-                "hint": {
-                    "type": "plain_text",
-                    "text": "Share this folder with the service account email before saving.",
-                },
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "google_folder_id",
-                    "placeholder": {"type": "plain_text", "text": "Drive folder ID from the folder URL"},
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "google_credentials_block",
-                "label": {"type": "plain_text", "text": "Service account or OAuth JSON"},
-                "hint": {
-                    "type": "plain_text",
-                    "text": "Paste a Google service account JSON key, or OAuth token JSON with refresh_token.",
-                },
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "google_credentials_json",
-                    "multiline": True,
+                    "placeholder": {"type": "plain_text", "text": "README.md, docs/faq.md…"},
                 },
             },
         ],
@@ -515,17 +475,6 @@ async def handle_setup_github_connector(ack, body, client):
     if workspace is None or not trigger_id or not await _is_admin(workspace.id, user_id):
         return
     await client.views_open(trigger_id=trigger_id, view=_github_modal(team_id))
-
-
-async def handle_setup_google_drive_connector(ack, body, client):
-    await ack()
-    team_id = body.get("team", {}).get("id", "") or body.get("team_id", "")
-    user_id = body.get("user", {}).get("id", "")
-    trigger_id = body.get("trigger_id", "")
-    workspace = await _workspace_for_team(team_id)
-    if workspace is None or not trigger_id or not await _is_admin(workspace.id, user_id):
-        return
-    await client.views_open(trigger_id=trigger_id, view=_google_drive_modal(team_id))
 
 
 async def handle_sync_connector(ack, body, respond):
@@ -630,45 +579,3 @@ async def handle_disconnect_slack_search(ack, body, respond) -> None:
         await respond(response_type="ephemeral", text="Failed to disconnect Slack Search. Please try again.")
         return
     await respond(response_type="ephemeral", text=":white_check_mark: Slack Search context disconnected.")
-
-
-async def handle_save_google_drive_connector(ack, body):
-    metadata = json.loads(body.get("view", {}).get("private_metadata", "{}"))
-    team_id = metadata.get("team_id", "")
-    user_id = body.get("user", {}).get("id", "")
-    workspace = await _workspace_for_team(team_id)
-    if workspace is None or not await _is_admin(workspace.id, user_id):
-        await ack()
-        return
-
-    values = body.get("view", {}).get("state", {}).get("values", {})
-    folder_id = values.get("google_folder_block", {}).get("google_folder_id", {}).get("value", "")
-    credentials_json = (
-        values.get("google_credentials_block", {})
-        .get("google_credentials_json", {})
-        .get("value", "")
-    )
-    errors = {}
-    if not folder_id.strip():
-        errors["google_folder_block"] = "Enter a Google Drive folder ID."
-    credential_error = _validate_google_drive_credentials_json(credentials_json or "")
-    if credential_error:
-        errors["google_credentials_block"] = credential_error
-    if errors:
-        await ack(response_action="errors", errors=errors)
-        return
-
-    await ack()
-    async with get_session(workspace.id) as session:
-        connector = await _upsert_source_connector(
-            session,
-            workspace_id=workspace.id,
-            connector_type="google_drive",
-            credentials=credentials_json,
-            config={"folder_id": folder_id.strip()},
-        )
-        connector_id = connector.id
-
-    from relay.worker.connector_tasks import sync_connector
-
-    sync_connector.delay(str(workspace.id), str(connector_id))

@@ -33,13 +33,13 @@ To give another team member admin access, have them message RELAY directly or as
 
 ### 2. Register a customer channel
 
-Run this command in the channel you want RELAY to monitor:
+Run this command from Slack's main message box:
 
 ```
-/relay register #channel-name CompanyName
+/relay add #channel-name CompanyName enterprise @owner
 ```
 
-Replace `#channel-name` with the actual Slack channel and `CompanyName` with the customer's name (e.g., `/relay register #acme-support Acme Corp`).
+Replace `#channel-name` with the actual Slack channel, `CompanyName` with the customer's name, and `@owner` with the account owner (e.g., `/relay add #acme-support Acme Corp enterprise @sofia`).
 
 RELAY will confirm when the channel is registered.
 
@@ -53,9 +53,13 @@ If you don't use HubSpot, you can skip this step for now — RELAY will still wo
 
 Go to `/relay settings` and click **Connect GitHub**.
 
-- **GitHub:** Paste a personal access token (needs `repo:read` scope). RELAY will index your documentation repos.
+- **GitHub:** Paste a personal access token and the documentation repositories RELAY should index.
 
-Once connected, RELAY syncs your content and uses it to draft responses.
+Once connected, RELAY syncs your content and uses it to draft responses. Google Drive/Docs setup is intentionally hidden in this beta until direct Google OAuth is ready.
+
+### Optional: enable Slack Search
+
+In `/relay settings`, click **Enable Slack Search** if you want RELAY to use permission-aware internal Slack search for your user. This helps drafts and `/relay ask` find recent internal context without bulk-ingesting public-channel history.
 
 ---
 
@@ -92,7 +96,7 @@ RELAY tracks how long each question has been open. If it crosses your SLA thresh
 | `/relay help` | Shows all available commands |
 | `/relay ask <question>` | Search your knowledge base directly |
 | `/relay pulse <company>` | Account digest: open questions, SLA status, ARR |
-| `/relay register #channel Company` | Add a channel to monitoring |
+| `/relay add #channel Company enterprise @owner` | Add a channel to monitoring |
 | `/relay settings` | Manage connectors and team settings |
 
 ### Examples
@@ -100,7 +104,7 @@ RELAY tracks how long each question has been open. If it crosses your SLA thresh
 ```
 /relay ask what is our refund policy
 /relay pulse Acme Corp
-/relay register #beta-customer-support BetaCo
+/relay add #beta-customer-support BetaCo enterprise @sofia
 ```
 
 ---
@@ -117,6 +121,7 @@ Run `/relay settings` at any time to see:
 - Which channels are registered
 - Which knowledge sources are connected and when they last synced
 - HubSpot connection status
+- Whether Slack Search context is enabled for you
 
 The App Home tab also shows a live setup checklist and your team's open question queue.
 
@@ -151,7 +156,7 @@ This revokes RELAY's access immediately. All stored data can also be deleted on 
 RELAY stores:
 - Customer messages that are identified as questions (not all messages)
 - Your team's responses and draft history
-- Knowledge content you explicitly sync (GitHub repos, Drive folders)
+- Knowledge content you explicitly sync (GitHub repositories in this beta)
 - Account data from HubSpot (name, ARR, tier)
 
 RELAY does **not** store full message history. Only messages classified as customer questions are retained.

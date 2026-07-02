@@ -82,18 +82,16 @@ flips to **resolved** and the SLA timer stops. Voiceover: *"Nothing reaches the
 customer without human approval. Approve, and RELAY posts it and remembers the
 resolution for next time."*
 
-**Scene 6 — Knowledge recall (15s, optional).**
-Run either:
+**Scene 6 — Account insight + knowledge recall (15s, optional).**
+Run:
 ```
-/relay ask refund policy
+/relay ask what is the customer's main concern?
 ```
-or, to show GitHub as a live knowledge source:
+Show that RELAY synthesizes recent customer-channel messages into a CSM-ready concern summary instead of replaying raw messages. If you want to show GitHub retrieval too, run:
 ```
 /relay ask what is the folder structure of the repo
 ```
-Show a cited answer pulled from the indexed GitHub knowledge (the folder-structure
-question now retrieves the repository-structure manifest). Voiceover:
-*"RELAY also answers internal questions from your connected knowledge sources."*
+Voiceover: *"RELAY also gives CSMs an account readout: what the customer is really worried about, and what kind of reply will move the conversation forward."*
 
 **Close (10s).**
 Voiceover: *"RELAY — a Slack-native customer-success agent. Detect, draft, and

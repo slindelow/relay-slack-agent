@@ -33,14 +33,14 @@ Use this checklist for the first friendly Slack Connect beta workspace. Keep the
 ## Account And Source Setup
 
 - [ ] Connect HubSpot, or seed one test account if HubSpot is unavailable.
-- [ ] Configure at least one source connector through `/relay settings`.
+- [ ] Configure the GitHub source connector through `/relay settings`.
 - [ ] Trigger connector sync from `/relay settings`.
 - [ ] Confirm source sync status moves to `synced`.
 - [ ] Run `/relay ask <known source question>` and confirm RELAY returns a relevant source.
 
 ## Slack Connect Flow
 
-- [ ] Register the Slack Connect channel with `/relay register #channel Account Name enterprise @owner`.
+- [ ] Register the Slack Connect channel with `/relay add #channel Account Name enterprise @owner`.
 - [ ] Post a customer-like question from the external/customer side.
 - [ ] Confirm RELAY ingests the message and creates or detects an open question.
 - [ ] Trigger or wait for SLA poller alert.

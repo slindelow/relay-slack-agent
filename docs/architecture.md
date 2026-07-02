@@ -19,7 +19,7 @@ flowchart TD
     M["draft_generation tool"]
     N["pgvector Semantic Search\nrelay/connectors/retrieval.py"]
     O["CRM Context\nHubSpot / customer_accounts"]
-    P["GitHub / Google Drive\nrelay/connectors/"]
+    P["GitHub Knowledge\nrelay/connectors/"]
     Q["Slack Real-Time Search\nrelay/context/slack_rts.py"]
     R["Anthropic API\nclaude-sonnet-4-6"]
     S["Human Approval Modal\nrelay/slack/draft_modal.py"]
@@ -70,7 +70,7 @@ flowchart TD
 | **MCP Server** | Governed interface between Claude and RELAY's data tools | `relay/context/mcp_server.py` |
 | **Context service** | Fetches question/account context, assembles evidence bundles | `relay/context/service.py`, `relay/context/contracts.py` |
 | **Retrieval** | pgvector ANN search over indexed knowledge entries | `relay/connectors/retrieval.py` |
-| **Connectors** | Sync GitHub/Google Drive docs; HubSpot CRM; Slack RTS | `relay/connectors/`, `relay/context/slack_rts.py` |
+| **Connectors** | Sync GitHub docs; HubSpot CRM; Slack RTS | `relay/connectors/`, `relay/context/slack_rts.py` |
 | **Draft generator** | Calls Anthropic API with evidence bundle via `draft_generation` MCP tool | `relay/drafting/generator.py` |
 | **Approval modal** | Block Kit modal for CSM review, edit, and one-click send | `relay/slack/draft_modal.py` |
 | **Resolution memory** | Stores approved Q+A pairs; feeds back into retrieval | `relay/drafting/memory.py` |

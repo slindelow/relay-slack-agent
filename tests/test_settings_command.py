@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -11,13 +10,10 @@ from sqlalchemy import select, text
 
 from relay.commands.settings import (
     SettingsStatus,
-    _google_drive_modal,
     _parse_multiline_csv,
     _upsert_source_connector,
-    _validate_google_drive_credentials_json,
     build_settings_blocks,
     handle_save_github_connector,
-    handle_save_google_drive_connector,
     handle_setup_github_connector,
     handle_settings,
     handle_sync_connector,
@@ -68,7 +64,7 @@ def test_build_settings_blocks_shows_setup_state():
     assert "Setup checklist" in text
     assert "Customer Slack Connect channel registered" in text
     assert "/relay add #channel Account Name enterprise @owner" in text
-    assert "Connect HubSpot" in str(blocks)
+    assert "Reconnect HubSpot" in str(blocks)
     assert "Connect GitHub" in str(blocks)
     assert "Connect Google Drive" not in str(blocks)
 
@@ -128,37 +124,42 @@ def test_build_settings_blocks_shows_hubspot_sync_when_connected():
     assert "relay_sync_hubspot" not in str(not_connected)
 
 
+def test_build_settings_blocks_guides_next_missing_step():
+    needs_source = build_settings_blocks(
+        SettingsStatus(
+            installed=True,
+            admin_count=1,
+            channel_count=1,
+            crm_connected=True,
+            source_count=0,
+            app_base_url="https://relay.example.com",
+        )
+    )
+    assert "Next step: connect GitHub" in str(needs_source)
+
+    ready = build_settings_blocks(
+        SettingsStatus(
+            installed=True,
+            admin_count=1,
+            channel_count=1,
+            crm_connected=True,
+            source_count=1,
+            slack_search_connected=True,
+            app_base_url="https://relay.example.com",
+        )
+    )
+    ready_text = str(ready)
+    assert "Ready" in ready_text
+    assert "Enable Slack Search" not in ready_text
+    assert "Disconnect Slack Search" in ready_text
+
+
 def test_parse_multiline_csv_accepts_commas_and_lines():
     assert _parse_multiline_csv("owner/a, owner/b\nowner/c\n\n") == [
         "owner/a",
         "owner/b",
         "owner/c",
     ]
-
-
-def test_google_drive_modal_guides_service_account_setup():
-    modal = _google_drive_modal("T123")
-    text = str(modal)
-
-    assert "Service account or OAuth JSON" in text
-    assert "Share this folder with the service account email" in text
-
-
-def test_validate_google_drive_credentials_accepts_service_account_json():
-    credentials = {
-        "type": "service_account",
-        "client_email": "relay-drive@example.iam.gserviceaccount.com",
-        "private_key": "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n",
-        "token_uri": "https://oauth2.googleapis.com/token",
-    }
-
-    assert _validate_google_drive_credentials_json(json.dumps(credentials)) is None
-
-
-def test_validate_google_drive_credentials_rejects_wrong_shape():
-    assert "client_id" in _validate_google_drive_credentials_json(json.dumps({"type": "authorized_user"}))
-
-
 @pytest.mark.asyncio
 async def test_handle_settings_returns_blocks(monkeypatch):
     workspace_id = uuid.uuid4()
@@ -393,54 +394,6 @@ async def test_save_github_connector_enqueues_sync():
 
     ack.assert_awaited_once()
     mock_delay.assert_called_once_with(str(workspace.id), str(connector.id))
-
-
-@pytest.mark.asyncio
-async def test_save_google_drive_connector_enqueues_sync():
-    workspace = SimpleNamespace(id=uuid.uuid4())
-    connector = SimpleNamespace(id=uuid.uuid4())
-    session = AsyncMock()
-
-    @asynccontextmanager
-    async def fake_get_session(workspace_id=None):
-        yield session
-
-    credentials = json.dumps({
-        "type": "service_account",
-        "client_email": "relay-drive@example.iam.gserviceaccount.com",
-        "private_key": "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n",
-        "token_uri": "https://oauth2.googleapis.com/token",
-    })
-    ack = AsyncMock()
-    body = {
-        "user": {"id": "U_ADMIN"},
-        "view": {
-            "private_metadata": '{"team_id": "T123"}',
-            "state": {
-                "values": {
-                    "google_folder_block": {"google_folder_id": {"value": "folder123"}},
-                    "google_credentials_block": {"google_credentials_json": {"value": credentials}},
-                }
-            },
-        },
-    }
-
-    with (
-        patch("relay.commands.settings._workspace_for_team", new=AsyncMock(return_value=workspace)),
-        patch("relay.commands.settings._is_admin", new=AsyncMock(return_value=True)),
-        patch("relay.commands.settings.get_session", fake_get_session),
-        patch("relay.commands.settings._upsert_source_connector", new=AsyncMock(return_value=connector)) as mock_upsert,
-        patch("relay.worker.connector_tasks.sync_connector.delay") as mock_delay,
-    ):
-        await handle_save_google_drive_connector(ack=ack, body=body)
-
-    ack.assert_awaited_once()
-    mock_upsert.assert_awaited_once()
-    assert mock_upsert.await_args.kwargs["connector_type"] == "google_drive"
-    assert mock_upsert.await_args.kwargs["config"] == {"folder_id": "folder123"}
-    mock_delay.assert_called_once_with(str(workspace.id), str(connector.id))
-
-
 @pytest.mark.asyncio
 async def test_sync_connector_action_enqueues_worker():
     ack = AsyncMock()

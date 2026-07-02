@@ -50,6 +50,6 @@ RELAY includes Slack files in permission-aware Real-Time Search results so CSMs 
 
 RELAY allows Slack Real-Time Search to resolve user-related context returned by Slack search, such as author or owner information on relevant internal messages. RELAY does not use this scope to build a directory export.
 
-## Optional Connector Scopes
+## Optional Connector Integrations
 
-Google Drive, GitHub, CRM, and future connector scopes are optional and are requested only when a workspace admin configures that connector. Connector content is scoped to the configured source and can be disconnected and purged independently.
+GitHub, CRM, and future connector integrations are optional and are used only when a workspace admin configures that source. Connector content is scoped to the configured source and can be disconnected and purged independently. Google Drive/Docs setup is not exposed in the beta Slack UI until direct Google OAuth is ready.

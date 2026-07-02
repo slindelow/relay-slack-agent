@@ -166,7 +166,7 @@ async def beta_install_page():
 <ol>
   <li>Open RELAY App Home in Slack.</li>
   <li>Run <code>/relay settings</code> to check setup status.</li>
-  <li>Register a customer Slack Connect channel with <code>/relay register #channel Account Name enterprise @owner</code>.</li>
+  <li>Register a customer Slack Connect channel with <code>/relay add #channel Account Name enterprise @owner</code>.</li>
 </ol>
 """,
     )
@@ -207,7 +207,7 @@ async def privacy_policy():
   <li>Short message excerpts and question metadata from registered Slack Connect channels only.</li>
   <li>Customer account metadata such as tier, ARR, renewal date, health score, and owner assignment when connected from CRM systems.</li>
   <li>Drafts, approval metadata, feedback signals, impact metrics, and retrieval logs needed to operate and improve RELAY.</li>
-  <li>Optional connector content from administrator-configured knowledge sources such as Google Drive and GitHub.</li>
+  <li>Optional connector content from administrator-configured knowledge sources such as GitHub repositories.</li>
 </ul>
 <h2>Retention</h2>
 <p>Raw Slack excerpts are retained for up to 90 days. Operational metadata, drafts, feedback, retrieval logs, and impact metrics are retained for up to one year unless a workspace admin requests deletion earlier. Connector-derived content is removed when the connector is disconnected and purged.</p>
