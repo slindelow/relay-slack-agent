@@ -1,6 +1,6 @@
 # RELAY — Demo Recording Script
 
-A tight, repeatable walkthrough for the submission video. Target length: **2–3 minutes**.
+A tight, repeatable walkthrough for the submission video. Target length: **2.5–3 minutes**.
 Record in the "RELAY Beta" Slack workspace against the live Railway deploy
 (`https://web-production-acd3.up.railway.app`).
 
@@ -27,21 +27,10 @@ Record in the "RELAY Beta" Slack workspace against the live Railway deploy
 5. **Reinstall the Slack app** if you want **Send** to post as the CSM's name +
    avatar (grants `chat:write.customize`). If you skip this, Send still works —
    it posts a clean plain message with no RELAY branding.
-6. **GitHub knowledge is fresh** — needed for the folder-structure / architecture
-   demo questions. The GitHub connector now indexes a repository-structure
-   manifest (the folder tree) in addition to issues/PRs/releases, so "what's the
-   folder setup?" retrieves a real source instead of falling back to a low-
-   confidence holding reply.
-   - Make sure the answer exists in the synced repo: this branch adds a
-     **"Repository Layout"** section to `README.md`. Merge/push it to
-     `slindelow/relay-slack-agent` before recording. (Optional: add `README.md`
-     to the connector's `markdown_paths` for the richer prose answer.)
-   - **Re-sync the connector** so the new structure document gets embedded: open
-     **RELAY → App Home** (or `/relay settings`) and click **Sync** on the GitHub
-     connector. This enqueues the `relay.sync_connector` Celery task; connectors
-     also auto-sync every 6h. Give it ~30s, then confirm with
-     `/relay ask what is the folder structure of the repo` — you should get a
-     cited, confident answer.
+6. **GitHub knowledge is ready** — the "Repository Layout" section in `README.md`
+   is already on `main` and merged. Scene 1.5 will re-sync the GitHub connector
+   live on camera, so you don't need to do this before recording. Just confirm
+   that the section exists in the repo.
 
 ---
 
@@ -51,6 +40,14 @@ Record in the "RELAY Beta" Slack workspace against the live Railway deploy
 Show the registered Slack Connect customer channel. Voiceover: *"Customer
 questions in Slack Connect channels get missed. RELAY watches them, enforces
 SLA, and drafts cited replies — with a human always in the loop."*
+
+**Scene 1.5 — The setup (15s).**
+Open the App Home (click the RELAY app icon) or run `/relay settings`. Show the
+connected sources: GitHub and HubSpot already synced. Click the **Sync** button on
+the GitHub connector to trigger a live re-sync. Voiceover: *"Setup is just a few
+clicks — RELAY connects to your CRM and knowledge sources. Here it's pulling
+account data from HubSpot and indexing our GitHub repository."* Let it complete
+(~10s) while the voiceover plays, so judges see the connectors working.
 
 **Scene 2 — A customer asks a question (20s).**
 In the registered channel, post as the customer:
