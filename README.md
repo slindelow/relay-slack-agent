@@ -8,7 +8,7 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 
 > RELAY is currently in private beta. Install links are shared directly with invited CS teams.
 
-**Install RELAY →** `https://your-relay-app.example.com/` *(replace with your deployed APP_BASE_URL)*
+**Install RELAY →** <https://web-production-acd3.up.railway.app/>
 
 Once installed, four setup steps unlock the full feature set:
 

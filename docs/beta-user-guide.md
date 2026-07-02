@@ -161,4 +161,4 @@ RELAY stores:
 
 RELAY does **not** store full message history. Only messages classified as customer questions are retained.
 
-For the full privacy policy, visit `$APP_BASE_URL/privacy`.
+For the full privacy policy, visit <https://web-production-acd3.up.railway.app/privacy>.
