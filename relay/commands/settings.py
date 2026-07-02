@@ -550,13 +550,18 @@ async def handle_save_github_connector(ack, body):
 
     await ack()
     async with get_session(workspace.id) as session:
-        await _upsert_source_connector(
+        connector = await _upsert_source_connector(
             session,
             workspace_id=workspace.id,
             connector_type="github",
             credentials=token.strip(),
             config={"repo_list": repos, "markdown_paths": markdown_paths},
         )
+        connector_id = connector.id
+
+    from relay.worker.connector_tasks import sync_connector
+
+    sync_connector.delay(str(workspace.id), str(connector_id))
 
 
 async def handle_disconnect_slack_search(ack, body, respond) -> None:

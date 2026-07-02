@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from relay.commands.ask import _escape_mrkdwn, _format_result_blocks, _parse_ask_query, handle_ask
+from relay.commands.ask import (
+    _dedupe_and_rank_sources,
+    _escape_mrkdwn,
+    _format_result_blocks,
+    _parse_ask_query,
+    handle_ask,
+)
 from relay.context.contracts import ContextSource
 from relay.context.slack_rts import SlackSearchStatus
 
@@ -32,7 +38,7 @@ def test_parse_ask_query_word_boundary():
     assert _parse_ask_query("asking about SSO") == "asking about SSO"
 
 
-def test_format_result_blocks_includes_source_metadata():
+def test_format_result_blocks_returns_answer_without_raw_source_metadata():
     chunk = ContextSource(
         title="SSO docs",
         provider="google_drive",
@@ -41,12 +47,16 @@ def test_format_result_blocks_includes_source_metadata():
         stale=False,
     )
 
-    blocks = _format_result_blocks([chunk])
+    blocks = _format_result_blocks("How do I configure SSO?", [chunk])
 
     text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+    assert "*Answer*" in text
+    assert "*Citations*" in text
     assert "SSO docs" in text
-    assert "google_drive" in text
     assert "Enable SSO" in text
+    assert "`google_drive`" not in text
+    assert "`customer-safe`" not in text
+    assert "_fresh_" not in text
 
 
 def test_escape_mrkdwn():
@@ -64,7 +74,7 @@ def test_format_result_blocks_escapes_title_and_excerpt():
         stale=False,
     )
 
-    blocks = _format_result_blocks([chunk])
+    blocks = _format_result_blocks("Docs guide", [chunk])
 
     text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
     assert "Docs &amp; Guide" in text
@@ -82,12 +92,104 @@ def test_format_result_blocks_non_https_url_falls_back_to_text():
         stale=False,
     )
 
-    blocks = _format_result_blocks([chunk])
+    blocks = _format_result_blocks("Risky Doc", [chunk])
 
     text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
     # URL must not be embedded; title should still appear as plain text
     assert "javascript:" not in text
     assert "Risky Doc" in text
+
+
+def test_repo_structure_query_prefers_github_structure_source():
+    memory = ContextSource(
+        title="TestCo - current status",
+        provider="relay_memory",
+        url=None,
+        excerpt="RELAY status update from a prior customer conversation.",
+        stale=False,
+    )
+    structure = ContextSource(
+        title="owner/repo repository structure",
+        provider="github",
+        url="https://github.com/owner/repo",
+        excerpt=(
+            "REPOSITORY STRUCTURE for owner/repo\n\n"
+            "Top-level entries:\n"
+            "- relay\n"
+            "- tests\n"
+            "- docs\n"
+            "- alembic\n"
+            "- scripts\n\n"
+            "All directories:\n"
+            "- relay/\n"
+            "- relay/commands/\n"
+            "- relay/connectors/\n"
+            "- tests/\n"
+            "- docs/"
+        ),
+        stale=False,
+    )
+
+    ranked = _dedupe_and_rank_sources(
+        "what is the folder structure of the RELAY repo?",
+        [memory, structure],
+    )
+    blocks = _format_result_blocks(
+        "what is the folder structure of the RELAY repo?",
+        [memory, structure],
+    )
+    text = "\n".join(block.get("text", {}).get("text", "") for block in blocks)
+
+    assert ranked[0] == structure
+    assert "`relay/`" in text
+    assert "`tests/`" in text
+    assert "`docs/`" in text
+    assert "TestCo" not in text.split("*Citations*")[0]
+
+
+def test_dedupe_and_rank_sources_filters_weak_unrelated_results():
+    unrelated = ContextSource(
+        title="Billing policy",
+        provider="relay_memory",
+        url=None,
+        excerpt="Refund windows and billing escalation contacts.",
+        stale=False,
+    )
+
+    assert _dedupe_and_rank_sources("what is the folder structure of the RELAY repo?", [unrelated]) == []
+
+
+def test_where_does_handle_query_uses_repo_structure_intent_ranking():
+    structure = ContextSource(
+        title="owner/repo repository structure",
+        provider="github",
+        url="https://github.com/owner/repo",
+        excerpt=(
+            "REPOSITORY STRUCTURE for owner/repo\n\n"
+            "Top-level entries:\n"
+            "- relay\n"
+            "- tests\n\n"
+            "All directories:\n"
+            "- relay/slack/\n"
+            "- relay/drafting/\n"
+            "- relay/connectors/"
+        ),
+        stale=False,
+    )
+    weak_memory = ContextSource(
+        title="Where in repo customer question",
+        provider="relay_memory",
+        url=None,
+        excerpt="A prior customer asked where a billing setting lives.",
+        stale=False,
+    )
+
+    ranked = _dedupe_and_rank_sources(
+        "where does the repo handle Slack event ingestion and GitHub knowledge retrieval?",
+        [weak_memory, structure],
+    )
+
+    assert ranked[0] == structure
 
 
 @pytest.mark.asyncio

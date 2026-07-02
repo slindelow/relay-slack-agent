@@ -13,6 +13,7 @@ from relay.commands.settings import (
     _parse_multiline_csv,
     _upsert_source_connector,
     build_settings_blocks,
+    handle_save_github_connector,
     handle_setup_github_connector,
     handle_settings,
     handle_sync_connector,
@@ -322,6 +323,44 @@ async def test_setup_github_connector_rejects_non_admin():
 
     ack.assert_awaited_once()
     client.views_open.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_github_connector_enqueues_sync():
+    workspace = SimpleNamespace(id=uuid.uuid4())
+    connector = SimpleNamespace(id=uuid.uuid4())
+    session = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_get_session(workspace_id=None):
+        yield session
+
+    ack = AsyncMock()
+    body = {
+        "user": {"id": "U_ADMIN"},
+        "view": {
+            "private_metadata": '{"team_id": "T123"}',
+            "state": {
+                "values": {
+                    "github_token_block": {"github_token": {"value": "ghp-secret"}},
+                    "github_repos_block": {"github_repos": {"value": "owner/repo"}},
+                    "github_markdown_paths_block": {"github_markdown_paths": {"value": "README.md"}},
+                }
+            },
+        },
+    }
+
+    with (
+        patch("relay.commands.settings._workspace_for_team", new=AsyncMock(return_value=workspace)),
+        patch("relay.commands.settings._is_admin", new=AsyncMock(return_value=True)),
+        patch("relay.commands.settings.get_session", fake_get_session),
+        patch("relay.commands.settings._upsert_source_connector", new=AsyncMock(return_value=connector)),
+        patch("relay.worker.connector_tasks.sync_connector.delay") as mock_delay,
+    ):
+        await handle_save_github_connector(ack=ack, body=body)
+
+    ack.assert_awaited_once()
+    mock_delay.assert_called_once_with(str(workspace.id), str(connector.id))
 
 
 @pytest.mark.asyncio
