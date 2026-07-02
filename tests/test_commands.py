@@ -52,6 +52,8 @@ async def test_relay_help_response_contains_blocks(help_handler):
     blocks = respond.call_args.kwargs["blocks"]
     text = _blocks_text(blocks)
     assert "RELAY command center" in text
+    assert "main message box" in text
+    assert "not a thread reply" in text
     assert "Set up RELAY" in text
     assert "/relay setup" in text
     assert "Add a customer channel" in text

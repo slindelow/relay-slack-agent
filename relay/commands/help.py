@@ -50,7 +50,13 @@ def _help_blocks() -> list[dict]:
     blocks: list[dict] = [
         {
             "type": "section",
-            "text": {"type": "mrkdwn", "text": "*RELAY command center*\nPick the job you want RELAY to do."},
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*RELAY command center*\n"
+                    "Pick the job you want RELAY to do. Run slash commands from the main message box, not a thread reply."
+                ),
+            },
         },
         {"type": "divider"},
     ]

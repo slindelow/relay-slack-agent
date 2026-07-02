@@ -28,6 +28,7 @@ For deployment instructions, see [docs/deployment/private-beta-railway.md](docs/
 
 - Slack/FastAPI event surface for Slack OAuth, Events API, interactivity, App Home, and slash commands.
 - `/relay help`, `/relay setup`, `/relay add`, `/relay ask`, `/relay pulse`, and `/relay delete-workspace-data` (with `settings`/`sources`/`connect` and `register` aliases).
+- Slack slash commands must be run from the main message composer; Slack does not support slash commands in thread replies.
 - Slack Connect channel registration and customer-team verification.
 - Async worker ingestion, question classification, question state machine, SLA polling, DM alerts, claim/snooze/not-a-question actions.
 - Source connector, embedding, retrieval, evidence bundle, draft generation, review modal, approved posting, impact metrics, feedback export, and resolution memory.

@@ -402,7 +402,10 @@ async def handle_send_draft(ack, body, client):
         channel_name = f"<#{channel_id_slack}>" if channel_id_slack else "the customer channel"
         await client.chat_postMessage(
             channel=user_id,
-            text=f":white_check_mark: Response sent to {channel_name}",
+            text=(
+                f":white_check_mark: Response sent to {channel_name}\n"
+                "Tip: run `/relay help` or `/relay settings` from the main message box, not a thread reply."
+            ),
         )
 
     except Exception:

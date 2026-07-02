@@ -23,6 +23,8 @@ def test_build_home_no_connectors():
     blocks = build_home([])
     texts = [b.get("text", {}).get("text", "") for b in blocks]
     assert any("No sources connected" in t for t in texts)
+    assert any("main message box" in t for t in texts)
+    assert any("thread replies" in t for t in texts)
 
 
 def test_build_home_setup_state_reflects_progress():

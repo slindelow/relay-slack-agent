@@ -310,7 +310,11 @@ def build_home(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*Welcome to RELAY.*\nMonitor customer Slack Connect channels, detect unanswered questions, and get cited response drafts.",
+                "text": (
+                    "*Welcome to RELAY.*\n"
+                    "Monitor customer Slack Connect channels, detect unanswered questions, and get cited response drafts.\n"
+                    "Use `/relay help` from the main message box; Slack does not run slash commands from thread replies."
+                ),
             },
         },
         {"type": "divider"},
