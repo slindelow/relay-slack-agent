@@ -4,6 +4,8 @@ RELAY is a Slack-native customer-success agent for teams managing Slack Connect 
 
 > **Current status as of 2026-07-02:** Railway is live and the core private-beta loop has been validated end-to-end in a real Slack Connect workspace: setup, channel monitoring, HubSpot sync, GitHub retrieval, Slack Search context, SLA alerts, draft review, and approved posting. RELAY is ready for hackathon submission and focused private-beta usage; it is not yet a self-serve public Slack Marketplace app.
 
+**Demo video:** [Watch the RELAY walkthrough](https://youtu.be/vvf3aMxv6k8)
+
 ## Private Beta
 
 > RELAY is currently in private beta. Install links are shared directly with invited CS teams.

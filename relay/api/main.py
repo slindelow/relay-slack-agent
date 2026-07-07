@@ -155,7 +155,10 @@ async def beta_install_page():
         f"""
 <h1>RELAY Private Beta</h1>
 <p>RELAY helps customer success teams monitor registered Slack Connect customer channels, detect unanswered customer questions, and draft source-backed replies for human approval.</p>
-<p><a href="{install_url}" style="display:inline-block;background:#17202a;color:white;padding:10px 14px;border-radius:6px;text-decoration:none;">Add to Slack</a></p>
+<p>
+  <a href="{install_url}" style="display:inline-block;background:#17202a;color:white;padding:10px 14px;border-radius:6px;text-decoration:none;">Add to Slack</a>
+  <a href="https://youtu.be/vvf3aMxv6k8" target="_blank" rel="noopener" style="display:inline-block;margin-left:10px;color:#17202a;">Watch demo video</a>
+</p>
 <h2>Before You Install</h2>
 <ul>
   <li>You must be a Slack workspace admin for the workspace where RELAY will run.</li>
